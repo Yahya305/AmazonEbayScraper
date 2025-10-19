@@ -1,13 +1,15 @@
 import csv
 import asyncio
 from playwright.async_api import async_playwright
+from utils.setup_browser import get_chromium_path
 import re
 
 # --- Reusable single-URL scraper ---
 async def scrape_ebay(item_url: str):
+    chromium_path = get_chromium_path()
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(executable_path=chromium_path,args=["--headless=new"],)
             page = await browser.new_page()
 
             # Log browser console messages

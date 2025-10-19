@@ -3,6 +3,7 @@ import asyncio
 import nest_asyncio
 import os
 from scraper import scrape_ebay_from_csv
+from utils.config_manager import get_chromium_path
 
 # Allow nested event loops (Flask + asyncio compatibility)
 nest_asyncio.apply()
@@ -11,6 +12,9 @@ app = Flask(__name__)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+chromium_path = get_chromium_path()
+print("Chromium path is:", chromium_path)
 
 
 @app.route("/")
