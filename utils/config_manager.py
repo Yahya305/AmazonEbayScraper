@@ -3,39 +3,45 @@ import json
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-CONFIG_FILE = "config.json"
+# ✅ Persistent config folder inside user's home directory
+CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".ebay_scraper")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
 
-def get_config_path():
-    """Return the absolute path of the config.json file."""
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), CONFIG_FILE)
+def ensure_config_dir():
+    """Ensure config directory exists."""
+    if not os.path.exists(CONFIG_DIR):
+        os.makedirs(CONFIG_DIR, exist_ok=True)
 
 
 def load_config():
-    """Load existing configuration from file, if available."""
-    config_path = get_config_path()
-    if os.path.exists(config_path):
-        with open(config_path, "r") as f:
+    """Load existing configuration from persistent config file, if available."""
+    ensure_config_dir()
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     return {}
 
 
 def save_config(config):
-    """Save configuration dictionary to file."""
-    config_path = get_config_path()
-    with open(config_path, "w") as f:
+    """Save configuration dictionary to persistent file."""
+    ensure_config_dir()
+    with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=4)
 
 
 def setup_chromium_path():
     """
     Open a window to let the user select the Chromium executable.
-    Saves the selected path into config.json.
+    Saves the selected path into config.json (in ~/.ebay_scraper).
     """
     root = tk.Tk()
     root.withdraw()
 
-    messagebox.showinfo("Setup", "Please select the Chromium executable file (chrome.exe or chromium.exe).")
+    messagebox.showinfo(
+        "Setup",
+        "Please select the Chromium executable file (chrome.exe or chromium.exe)."
+    )
 
     chromium_path = filedialog.askopenfilename(
         title="Select Chromium executable",
@@ -57,7 +63,7 @@ def setup_chromium_path():
 def get_chromium_path():
     """
     Retrieve Chromium path from config.
-    If not found, trigger setup.
+    If not found or invalid, trigger setup window.
     """
     config = load_config()
     path = config.get("chromium_path")
