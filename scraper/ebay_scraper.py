@@ -1,5 +1,5 @@
-import csv
 import asyncio
+from typing import List
 from playwright.async_api import async_playwright
 from utils.setup_browser import get_chromium_path
 import re
@@ -87,30 +87,24 @@ async def scrape_ebay(item_url: str):
         return {"success": False, "url": item_url, "error": str(e)}
 
 
-# --- Batch scraper (reads CSV, scrapes all URLs) ---
-async def scrape_ebay_from_csv(csv_path: str):
+async def scrape_ebay_from_csv(urls: List[str]):
     results = []
     failed_urls = []
 
-    # Read URLs from CSV
-    with open(csv_path, newline="", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        urls = [row[0].strip() for row in reader if row]
-
-    # Scrape sequentially (safer than parallel for eBay)
+    # Scrape sequentially (safer for eBay — avoids blocking)
     for url in urls:
         print(f"🔍 Scraping: {url}")
         result = await scrape_ebay(url)
 
-        if result["success"]:
+        if result.get("success"):
             results.append(result["data"])
         else:
-            failed_urls.append(result["url"])
+            failed_urls.append(result.get("url", url))
 
     return {
-            "results": results,
-            "totalUrls": len(urls),
-            "successfulScrapes": len(results),
-            "failedScrapes": len(failed_urls),
-            "failedUrls": failed_urls,
+        "results": results,
+        "totalUrls": len(urls),
+        "successfulScrapes": len(results),
+        "failedScrapes": len(failed_urls),
+        "failedUrls": failed_urls,
     }
