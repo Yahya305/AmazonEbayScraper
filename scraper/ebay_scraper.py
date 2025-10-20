@@ -1,6 +1,6 @@
 import asyncio
 from typing import List
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, Page
 from utils.setup_browser import get_chromium_path
 import re
 
@@ -86,7 +86,6 @@ async def scrape_ebay(item_url: str):
         print(f"❌ Error scraping {item_url}: {e}")
         return {"success": False, "url": item_url, "error": str(e)}
 
-
 async def scrape_ebay_from_csv(urls: List[str]):
     results = []
     failed_urls = []
@@ -101,6 +100,164 @@ async def scrape_ebay_from_csv(urls: List[str]):
         else:
             failed_urls.append(result.get("url", url))
 
+    return {
+        "results": results,
+        "totalUrls": len(urls),
+        "successfulScrapes": len(results),
+        "failedScrapes": len(failed_urls),
+        "failedUrls": failed_urls,
+    }
+
+async def set_amazon_zip_code(page: Page, zip_code: str = "75007"):
+    """Set the delivery zip code on Amazon product page"""
+    try:
+        print(f"Setting zip code to {zip_code}...")
+        
+        # Click the "Deliver to" link in the header
+        deliver_button = page.locator('#nav-global-location-popover-link')
+        await deliver_button.click(timeout=5000)
+        await asyncio.sleep(2)  # Wait for modal to fully load
+        print("Clicked deliver button, modal opening...")
+        
+        # Wait for the zip input field to appear
+        zip_input = page.locator('#GLUXZipUpdateInput')
+        await zip_input.wait_for(timeout=5000, state="visible")
+        print("Modal opened, found zip input")
+        
+        # Clear and enter the zip code
+        await zip_input.fill(zip_code)
+        await asyncio.sleep(0.5)
+        print(f"Entered zip code: {zip_code}")
+        
+        # Click Apply button
+        apply_button = page.locator('#GLUXZipUpdate')
+        await apply_button.click(timeout=5000)
+        await asyncio.sleep(2)  # Wait for page to update
+        print("Applied zip code successfully")
+        
+        return True
+        
+    except Exception as e:
+        print(f"⚠️ Error setting zip code: {e}")
+        return False
+
+async def scrape_amazon(product_url: str, zip_code: str = "75007"):
+    chromium_path = get_chromium_path()
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                executable_path=chromium_path,
+                args=["--headless=new"],
+            )
+            page = await browser.new_page()
+            
+            # Log browser console messages
+            page.on("console", lambda msg: print("PAGE LOG:", msg.text))
+            
+            # Set realistic user-agent
+            await page.context.set_extra_http_headers({
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
+            })
+            
+            # Navigate and wait for network to be idle
+            await page.goto(product_url, wait_until="load", timeout=60000)
+            await asyncio.sleep(2)
+            
+            # === SET ZIP CODE ===
+            zip_set = await set_amazon_zip_code(page, zip_code)
+            if not zip_set:
+                await browser.close()
+                return {"success": False, "url": product_url, "error": "Failed to set zip code"}
+            
+            # === SCRAPE DATA ===
+            await asyncio.sleep(2)  # Extra wait for content to load
+            
+            amazon_data = await page.evaluate(
+                """() => {
+                    // Extract ASIN from URL or page
+                    const urlMatch = window.location.href.match(/\\/dp\\/([A-Z0-9]+)/);
+                    const itemNumber = urlMatch ? urlMatch[1] : null;
+                    
+                    // Extract title
+                    let titleElement = document.querySelector("h1 span") ||
+                        document.querySelector("h1");
+                    const title = titleElement?.textContent?.trim() || null;
+                    
+                    // Extract current price (usually in .a-price-whole)
+                    let discountedPrice = null;
+                    const priceElements = document.querySelectorAll(".a-price-whole");
+                    
+                    if (priceElements.length > 0) {
+                        const priceText = priceElements[0].textContent?.trim() || "";
+                        const priceMatch = priceText.match(/[\\d,]+\\.?\\d*/);
+                        if (priceMatch) {
+                            discountedPrice = parseFloat(priceMatch[0].replace(/,/g, ""));
+                        }
+                    }
+                    
+                    // Extract original/list price (struck through)
+                    let actualPrice = null;
+                    const strikethroughElements = document.querySelectorAll(".a-price-strike");
+                    
+                    if (strikethroughElements.length > 0) {
+                        const strikeText = strikethroughElements[0].textContent?.trim() || "";
+                        const priceMatch = strikeText.match(/[\\d,]+\\.?\\d*/);
+                        if (priceMatch) {
+                            actualPrice = parseFloat(priceMatch[0].replace(/,/g, ""));
+                        }
+                    }
+                    
+                    // If no strike price found, actual = discounted
+                    if (!actualPrice) {
+                        actualPrice = discountedPrice;
+                    }
+                    
+                    // Extract stock availability
+                    let numberInStock = null;
+                    const pageText = document.body.textContent?.toLowerCase() || "";
+                    
+                    // Look for "Only X left in stock"
+                    const stockMatch = pageText.match(/only\\s+(\\d+)\\s+left/i);
+                    if (stockMatch) {
+                        numberInStock = parseInt(stockMatch[1]);
+                    }
+                    
+                    return { 
+                        itemNumber, 
+                        title, 
+                        discountedPrice, 
+                        actualPrice, 
+                        numberInStock,
+                        locationZipCode: "75007"
+                    };
+                }"""
+            )
+            
+            await browser.close()
+            amazon_data["url"] = product_url
+            return {"success": True, "data": amazon_data}
+            
+    except Exception as e:
+        print(f"❌ Error scraping {product_url}: {e}")
+        return {"success": False, "url": product_url, "error": str(e)}
+
+async def scrape_amazon_from_csv(urls: List[str], zip_code: str = "75007"):
+    results = []
+    failed_urls = []
+    
+    # Scrape sequentially (safer for Amazon — avoids blocking)
+    for url in urls:
+        print(f"🔍 Scraping: {url}")
+        result = await scrape_amazon(url, zip_code)
+        if result.get("success"):
+            results.append(result["data"])
+        else:
+            failed_urls.append(result.get("url", url))
+    
     return {
         "results": results,
         "totalUrls": len(urls),
