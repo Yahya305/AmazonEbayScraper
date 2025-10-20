@@ -5,50 +5,62 @@
         <title>Amazon Scraper</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
-
-    <body class="bg-gradient-to-br from-yellow-50 to-yellow-100 flex justify-center items-center min-h-screen">
-        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-3xl text-center">
-            <h1 class="text-3xl font-bold mb-4 text-yellow-700">
+    <body class="bg-yellow-50 flex justify-center items-center min-h-screen">
+        <div
+            class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-[850px] text-center"
+        >
+            <h1
+                class="text-3xl font-bold mb-4 text-yellow-700 flex items-center justify-center gap-2"
+            >
                 🛍️ Amazon Scraper
             </h1>
-            <p class="text-gray-600 mb-6">
-                Upload a CSV file with Amazon product URLs and scrape details instantly.
+            <p class="text-gray-600 mb-4">
+                Upload your CSV file containing Amazon product URLs:
             </p>
 
             <input
                 type="file"
                 id="csvFile"
                 accept=".csv"
-                class="border border-gray-300 rounded-lg p-2 w-full mb-4 focus:ring-2 focus:ring-yellow-500 outline-none"
+                class="border border-gray-300 rounded-lg p-2 w-full mb-4"
             />
 
-            <div class="flex gap-2 justify-center">
+            <div class="flex gap-3 justify-center mb-4">
                 <button
                     id="scrapeBtn"
-                    class="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg transition"
+                    class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg shadow"
                 >
                     🚀 Start Scraping
                 </button>
+                <button
+                    id="downloadBtn"
+                    class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow hidden"
+                >
+                    ⬇️ Download CSV
+                </button>
                 <a
                     href="/"
-                    class="inline-flex items-center px-6 py-2 border rounded-lg text-gray-600 hover:bg-gray-50 transition"
+                    class="inline-flex items-center px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
                     >← Home</a
                 >
             </div>
 
-            <div id="status" class="mt-5 text-gray-700 text-sm"></div>
-
+            <div id="status" class="mt-2 text-gray-700 font-medium"></div>
             <div id="results" class="mt-6 overflow-x-auto"></div>
         </div>
 
         <script>
+            let latestResults = [];
+
             document
                 .getElementById("scrapeBtn")
                 .addEventListener("click", async () => {
                     const fileInput = document.getElementById("csvFile");
                     const status = document.getElementById("status");
                     const resultsDiv = document.getElementById("results");
+                    const downloadBtn = document.getElementById("downloadBtn");
                     resultsDiv.innerHTML = "";
+                    downloadBtn.classList.add("hidden");
                     status.textContent = "⏳ Scraping in progress...";
 
                     if (!fileInput.files.length) {
@@ -67,15 +79,19 @@
                         });
                         const data = await res.json();
 
-                        if (data.status === "success" && data.data) {
+                        if (data.status === "success") {
                             const r = data.data;
-                            status.innerHTML = `
-                                ✅ <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> URLs scraped successfully.
-                                ${r.failedScrapes > 0 ? `<br>⚠️ Failed URLs: ${r.failedScrapes}` : ""}
-                            `;
-                            renderResults(r.results);
+                            latestResults = r.results || [];
+                            status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
+                            renderResults(latestResults);
+
+                            if (latestResults.length > 0) {
+                                downloadBtn.classList.remove("hidden");
+                            }
                         } else {
-                            status.innerHTML = `❌ Error: ${data.message || "Something went wrong."}`;
+                            status.innerHTML = `❌ Error: ${
+                                data.message || "Something went wrong."
+                            }`;
                         }
                     } catch (err) {
                         console.error(err);
@@ -83,24 +99,49 @@
                     }
                 });
 
+            document
+                .getElementById("downloadBtn")
+                .addEventListener("click", () => {
+                    if (!latestResults.length)
+                        return alert("No results to download.");
+
+                    const headers = Object.keys(latestResults[0]);
+                    const rows = latestResults.map((obj) =>
+                        headers
+                            .map((h) => JSON.stringify(obj[h] ?? ""))
+                            .join(",")
+                    );
+                    const csvContent = [headers.join(","), ...rows].join("\n");
+                    const blob = new Blob([csvContent], {
+                        type: "text/csv;charset=utf-8;",
+                    });
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(blob);
+                    link.download = "amazon_results.csv";
+                    link.click();
+                });
+
             function renderResults(results) {
                 const resultsDiv = document.getElementById("results");
                 if (!results || !results.length) {
-                    resultsDiv.innerHTML = "<p>No results found.</p>";
+                    resultsDiv.innerHTML =
+                        "<p class='text-gray-500'>No results found.</p>";
                     return;
                 }
 
                 const table = document.createElement("table");
-                table.className = "w-full border border-gray-300 text-left text-sm rounded-lg overflow-hidden";
+                table.className =
+                    "w-full border border-gray-300 text-left text-sm";
                 table.innerHTML = `
-                    <thead class="bg-yellow-100 text-yellow-800">
+                    <thead class="bg-gray-100">
                         <tr>
                             <th class="border px-3 py-2">ASIN / ID</th>
                             <th class="border px-3 py-2">Title</th>
-                            <th class="border px-3 py-2">Actual Price</th>
-                            <th class="border px-3 py-2">Discounted Price</th>
+                            <th class="border px-3 py-2">Actual Price ($)</th>
+                            <th class="border px-3 py-2">Discounted ($)</th>
                             <th class="border px-3 py-2">In Stock</th>
-                            <th class="border px-3 py-2">Stock Count</th>
+                            <th class="border px-3 py-2">Qty</th>
+                            <th class="border px-3 py-2">Zip</th>
                             <th class="border px-3 py-2">Link</th>
                         </tr>
                     </thead>
@@ -108,24 +149,34 @@
                         ${results
                             .map(
                                 (r) => `
-                            <tr class="hover:bg-yellow-50 transition">
-                                <td class="border px-3 py-2 font-mono">${r.itemNumber || "-"}</td>
-                                <td class="border px-3 py-2">${r.title || "-"}</td>
-                                <td class="border px-3 py-2">$${r.actualPrice ?? "-"}</td>
-                                <td class="border px-3 py-2">$${r.discountedPrice ?? "-"}</td>
-                                <td class="border px-3 py-2">
-                                    ${
-                                        r.inStock
-                                            ? `<span class="text-green-600 font-semibold">✅ Yes</span>`
-                                            : `<span class="text-red-600 font-semibold">❌ No</span>`
-                                    }
-                                </td>
-                                <td class="border px-3 py-2">${r.numberInStock ?? "-"}</td>
-                                <td class="border px-3 py-2">
-                                    <a href="${r.url}" target="_blank" class="text-blue-500 hover:underline">Open</a>
-                                </td>
-                            </tr>
-                        `
+                                <tr class="hover:bg-gray-50">
+                                    <td class="border px-3 py-2">${
+                                        r.itemNumber || "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.title || "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.actualPrice ?? "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.discountedPrice ?? "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.inStock ? "✅ Yes" : "❌ No"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.numberInStock ?? "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.locationZipCode ?? "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">
+                                        <a href="${
+                                            r.url
+                                        }" target="_blank" class="text-blue-600 hover:underline">Open</a>
+                                    </td>
+                                </tr>`
                             )
                             .join("")}
                     </tbody>
