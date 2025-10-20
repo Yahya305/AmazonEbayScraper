@@ -127,7 +127,6 @@
                             <th class="border px-3 py-2">Actual Price ($)</th>
                             <th class="border px-3 py-2">Discounted ($)</th>
                             <th class="border px-3 py-2">In Stock</th>
-                            <th class="border px-3 py-2">Qty</th>
                             <th class="border px-3 py-2">Zip</th>
                             <th class="border px-3 py-2">Link</th>
                         </tr>
@@ -142,7 +141,6 @@
                                     <td class="border px-3 py-2">${r.actualPrice ?? "-"}</td>
                                     <td class="border px-3 py-2">${r.discountedPrice ?? "-"}</td>
                                     <td class="border px-3 py-2">${r.inStock ? "✅ Yes" : "❌ No"}</td>
-                                    <td class="border px-3 py-2">${r.numberInStock ?? "-"}</td>
                                     <td class="border px-3 py-2">${r.locationZipCode ?? "-"}</td>
                                     <td class="border px-3 py-2">
                                         <a href="${r.url}" target="_blank" class="text-blue-600 hover:underline">Open</a>

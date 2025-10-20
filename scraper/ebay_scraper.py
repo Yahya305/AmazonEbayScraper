@@ -9,7 +9,9 @@ async def scrape_ebay(item_url: str):
     chromium_path = get_chromium_path()
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(executable_path=chromium_path,args=["--headless=new"],)
+            browser = await p.chromium.launch(executable_path=chromium_path,
+                                              args=["--headless=new"],
+                                              )
             page = await browser.new_page()
 
             # Log browser console messages
@@ -165,13 +167,14 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
             browser = await p.chromium.launch(
                 executable_path=chromium_path,
                 args=["--headless=new"],
+                # headless=False,
             )
             page = await browser.new_page()
-            
-            # Log browser console messages
+
+            # Log console messages (useful for debugging)
             page.on("console", lambda msg: print("PAGE LOG:", msg.text))
-            
-            # Set realistic user-agent
+
+            # Realistic user agent
             await page.context.set_extra_http_headers({
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -179,34 +182,34 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                     "Chrome/120.0.0.0 Safari/537.36"
                 )
             })
-            
-            # Navigate and wait for network to be idle
-            await page.goto(product_url, wait_until="load", timeout=60000)
-            await asyncio.sleep(2)
-            
+
+            # Go to the product page
+            await page.goto(product_url, wait_until="domcontentloaded", timeout=60000)
+
             # === SET ZIP CODE ===
             zip_set = await set_amazon_zip_code(page, zip_code)
             if not zip_set:
                 await browser.close()
                 return {"success": False, "url": product_url, "error": "Failed to set zip code"}
-            
+
+            # ✅ Wait for the page to finish reloading after ZIP update
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                print("⚠️ Timeout waiting for page reload — continuing anyway.")
+
+            # Wait for price or title elements to appear (ensures product content is ready)
+            await page.wait_for_selector("#productTitle", timeout=10000)
+
             # === SCRAPE DATA ===
-            await asyncio.sleep(2)  # Extra wait for content to load
-            
             amazon_data = await page.evaluate(
                 """() => {
-                    // Extract ASIN from URL
                     const urlMatch = window.location.href.match(/\\/dp\\/([A-Z0-9]+)/);
                     const itemNumber = urlMatch ? urlMatch[1] : null;
-                    
-                    // Extract title from the specific productTitle span
-                    let title = null;
-                    const titleElement = document.querySelector("#productTitle");
-                    if (titleElement) {
-                        title = titleElement.textContent?.trim() || null;
-                    }
-                    
-                    // Extract price - get the offscreen text which has the full price
+
+                    let title = document.querySelector("#productTitle")?.textContent?.trim() || null;
+
+                    // Extract discounted price
                     let discountedPrice = null;
                     const priceContainer = document.querySelector(".a-price.aok-align-center.reinventPricePriceToPayMargin");
                     if (priceContainer) {
@@ -214,39 +217,29 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                         if (offscreenPrice) {
                             const priceText = offscreenPrice.textContent?.trim() || "";
                             const priceMatch = priceText.match(/\\$(\\d+[.,]?\\d*)/);
-                            if (priceMatch) {
-                                discountedPrice = parseFloat(priceMatch[1].replace(/,/g, ""));
-                            }
+                            if (priceMatch) discountedPrice = parseFloat(priceMatch[1].replace(/,/g, ""));
                         }
                     }
-                    
-                    // Extract actual price - look for list/typical price
+
+                    // Extract typical/actual price
                     let actualPrice = null;
-                    const allText = document.body.innerText;
-                    const typicalPriceMatch = allText.match(/Typical price[:\\s]+\\$(\\d+[.,]?\\d*)/i);
+                    const typicalPriceMatch = document.body.innerText.match(/Typical price[:\\s]+\\$(\\d+[.,]?\\d*)/i);
                     if (typicalPriceMatch) {
                         actualPrice = parseFloat(typicalPriceMatch[1].replace(/,/g, ""));
-                    }
-                    
-                    // If no typical price found, use discounted price
-                    if (!actualPrice) {
+                    } else {
                         actualPrice = discountedPrice;
                     }
-                    
-                    // === Extract stock info ===
+
+                    // Stock info
                     let inStock = false;
                     let numberInStock = null;
-                    const stockElements = document.querySelectorAll("span, div");
-                    
-                    for (let el of stockElements) {
+                    for (let el of document.querySelectorAll("span, div")) {
                         const text = el.textContent?.trim() || "";
-                        
                         if (text.toLowerCase().includes("in stock")) {
                             inStock = true;
-                            numberInStock = 999; // generic "in stock"
+                            numberInStock = 999;
                             break;
                         }
-                        
                         const onlyMatch = text.match(/only\\s+(\\d+)\\s+left/i);
                         if (onlyMatch) {
                             inStock = true;
@@ -254,11 +247,11 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                             break;
                         }
                     }
-                    
-                    return { 
-                        itemNumber, 
-                        title, 
-                        discountedPrice, 
+
+                    return {
+                        itemNumber,
+                        title,
+                        discountedPrice,
                         actualPrice,
                         inStock,
                         numberInStock,
@@ -266,11 +259,11 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                     };
                 }"""
             )
-            
-            await browser.close()
+
             amazon_data["url"] = product_url
+            await browser.close()
             return {"success": True, "data": amazon_data}
-            
+
     except Exception as e:
         print(f"❌ Error scraping {product_url}: {e}")
         return {"success": False, "url": product_url, "error": str(e)}
