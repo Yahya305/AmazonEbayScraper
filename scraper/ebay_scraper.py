@@ -233,20 +233,23 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                         actualPrice = discountedPrice;
                     }
                     
-                    // Extract stock - look for "In Stock" text
+                    // === Extract stock info ===
+                    let inStock = false;
                     let numberInStock = null;
                     const stockElements = document.querySelectorAll("span, div");
+                    
                     for (let el of stockElements) {
                         const text = el.textContent?.trim() || "";
                         
-                        // Check for "In Stock" or "Only X left"
                         if (text.toLowerCase().includes("in stock")) {
-                            numberInStock = 999; // In stock, quantity not specified
+                            inStock = true;
+                            numberInStock = 999; // generic "in stock"
                             break;
                         }
                         
                         const onlyMatch = text.match(/only\\s+(\\d+)\\s+left/i);
                         if (onlyMatch) {
+                            inStock = true;
                             numberInStock = parseInt(onlyMatch[1]);
                             break;
                         }
@@ -256,7 +259,8 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                         itemNumber, 
                         title, 
                         discountedPrice, 
-                        actualPrice, 
+                        actualPrice,
+                        inStock,
                         numberInStock,
                         locationZipCode: "75007"
                     };

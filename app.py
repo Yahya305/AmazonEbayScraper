@@ -108,7 +108,7 @@ def scrape_amazon():
         # Run the async scraper directly with URLs
         data = asyncio.run(scrape_amazon_from_csv(urls))
 
-        return jsonify({"status": "success", "results": data})
+        return jsonify({"status": "success", "data": data})
 
     except Exception as e:
         print("❌ Error:", e)
