@@ -132,8 +132,25 @@ async def set_amazon_zip_code(page: Page, zip_code: str = "75007"):
         # Click Apply button
         apply_button = page.locator('#GLUXZipUpdate')
         await apply_button.click(timeout=5000)
-        await asyncio.sleep(2)  # Wait for page to update
-        print("Applied zip code successfully")
+        await asyncio.sleep(1)  # Wait for confirmation
+        print("Applied zip code")
+        
+        # Close the modal by clicking the Done button
+        done_button = page.locator('button[name="glowDoneButton"]')
+        try:
+            await done_button.click(timeout=5000)
+            await asyncio.sleep(2)  # Wait for modal to close and page to update
+            print("Closed modal successfully")
+        except Exception as e:
+            print(f"⚠️ Could not find Done button, trying close icon: {e}")
+            # Try clicking the close icon as fallback
+            close_button = page.locator('button[aria-label="Close"]')
+            try:
+                await close_button.click(timeout=5000)
+                await asyncio.sleep(2)
+                print("Closed modal with close icon")
+            except:
+                print("⚠️ Could not close modal")
         
         return True
         
@@ -178,52 +195,61 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
             
             amazon_data = await page.evaluate(
                 """() => {
-                    // Extract ASIN from URL or page
+                    // Extract ASIN from URL
                     const urlMatch = window.location.href.match(/\\/dp\\/([A-Z0-9]+)/);
                     const itemNumber = urlMatch ? urlMatch[1] : null;
                     
-                    // Extract title
-                    let titleElement = document.querySelector("h1 span") ||
-                        document.querySelector("h1");
-                    const title = titleElement?.textContent?.trim() || null;
+                    // Extract title from the specific productTitle span
+                    let title = null;
+                    const titleElement = document.querySelector("#productTitle");
+                    if (titleElement) {
+                        title = titleElement.textContent?.trim() || null;
+                    }
                     
-                    // Extract current price (usually in .a-price-whole)
+                    // Extract price - get the offscreen text which has the full price
                     let discountedPrice = null;
-                    const priceElements = document.querySelectorAll(".a-price-whole");
-                    
-                    if (priceElements.length > 0) {
-                        const priceText = priceElements[0].textContent?.trim() || "";
-                        const priceMatch = priceText.match(/[\\d,]+\\.?\\d*/);
-                        if (priceMatch) {
-                            discountedPrice = parseFloat(priceMatch[0].replace(/,/g, ""));
+                    const priceContainer = document.querySelector(".a-price.aok-align-center.reinventPricePriceToPayMargin");
+                    if (priceContainer) {
+                        const offscreenPrice = priceContainer.querySelector(".a-offscreen");
+                        if (offscreenPrice) {
+                            const priceText = offscreenPrice.textContent?.trim() || "";
+                            const priceMatch = priceText.match(/\\$(\\d+[.,]?\\d*)/);
+                            if (priceMatch) {
+                                discountedPrice = parseFloat(priceMatch[1].replace(/,/g, ""));
+                            }
                         }
                     }
                     
-                    // Extract original/list price (struck through)
+                    // Extract actual price - look for list/typical price
                     let actualPrice = null;
-                    const strikethroughElements = document.querySelectorAll(".a-price-strike");
-                    
-                    if (strikethroughElements.length > 0) {
-                        const strikeText = strikethroughElements[0].textContent?.trim() || "";
-                        const priceMatch = strikeText.match(/[\\d,]+\\.?\\d*/);
-                        if (priceMatch) {
-                            actualPrice = parseFloat(priceMatch[0].replace(/,/g, ""));
-                        }
+                    const allText = document.body.innerText;
+                    const typicalPriceMatch = allText.match(/Typical price[:\\s]+\\$(\\d+[.,]?\\d*)/i);
+                    if (typicalPriceMatch) {
+                        actualPrice = parseFloat(typicalPriceMatch[1].replace(/,/g, ""));
                     }
                     
-                    // If no strike price found, actual = discounted
+                    // If no typical price found, use discounted price
                     if (!actualPrice) {
                         actualPrice = discountedPrice;
                     }
                     
-                    // Extract stock availability
+                    // Extract stock - look for "In Stock" text
                     let numberInStock = null;
-                    const pageText = document.body.textContent?.toLowerCase() || "";
-                    
-                    // Look for "Only X left in stock"
-                    const stockMatch = pageText.match(/only\\s+(\\d+)\\s+left/i);
-                    if (stockMatch) {
-                        numberInStock = parseInt(stockMatch[1]);
+                    const stockElements = document.querySelectorAll("span, div");
+                    for (let el of stockElements) {
+                        const text = el.textContent?.trim() || "";
+                        
+                        // Check for "In Stock" or "Only X left"
+                        if (text.toLowerCase().includes("in stock")) {
+                            numberInStock = 999; // In stock, quantity not specified
+                            break;
+                        }
+                        
+                        const onlyMatch = text.match(/only\\s+(\\d+)\\s+left/i);
+                        if (onlyMatch) {
+                            numberInStock = parseInt(onlyMatch[1]);
+                            break;
+                        }
                     }
                     
                     return { 
