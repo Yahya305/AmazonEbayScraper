@@ -6,12 +6,17 @@
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-yellow-50 flex justify-center items-center min-h-screen">
-        <div class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-[900px] text-center">
-            <h1 class="text-3xl font-bold mb-4 text-yellow-700 flex items-center justify-center gap-2">
+        <div
+            class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-[900px] text-center"
+        >
+            <h1
+                class="text-3xl font-bold mb-4 text-yellow-700 flex items-center justify-center gap-2"
+            >
                 🛍️ Amazon Scraper
             </h1>
             <p class="text-gray-600 mb-4">
-                Paste up to <strong>2000 Amazon product URLs</strong> below — one per line:
+                Paste up to <strong>2000 Amazon product URLs</strong> below —
+                one per line:
             </p>
 
             <textarea
@@ -47,78 +52,91 @@
         <script>
             let latestResults = [];
 
-            document.getElementById("scrapeBtn").addEventListener("click", async () => {
-                const urlInput = document.getElementById("urlInput");
-                const status = document.getElementById("status");
-                const resultsDiv = document.getElementById("results");
-                const downloadBtn = document.getElementById("downloadBtn");
+            document
+                .getElementById("scrapeBtn")
+                .addEventListener("click", async () => {
+                    const urlInput = document.getElementById("urlInput");
+                    const status = document.getElementById("status");
+                    const resultsDiv = document.getElementById("results");
+                    const downloadBtn = document.getElementById("downloadBtn");
 
-                resultsDiv.innerHTML = "";
-                downloadBtn.classList.add("hidden");
-                status.textContent = "⏳ Scraping in progress...";
+                    resultsDiv.innerHTML = "";
+                    downloadBtn.classList.add("hidden");
+                    status.textContent = "⏳ Scraping in progress...";
 
-                const urls = urlInput.value
-                    .split("\n")
-                    .map((u) => u.trim())
-                    .filter((u) => u.length > 0);
+                    const urls = urlInput.value
+                        .split("\n")
+                        .map((u) => u.trim())
+                        .filter((u) => u.length > 0);
 
-                if (!urls.length) {
-                    alert("Please enter at least one URL.");
-                    status.textContent = "";
-                    return;
-                }
-
-                try {
-                    const res = await fetch("/scrape-amazon", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ urls }),
-                    });
-
-                    const data = await res.json();
-
-                    if (data.status === "success") {
-                        const r = data.data;
-                        latestResults = r.results || [];
-                        status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
-                        renderResults(latestResults);
-
-                        if (latestResults.length > 0) {
-                            downloadBtn.classList.remove("hidden");
-                        }
-                    } else {
-                        status.innerHTML = `❌ Error: ${data.message || "Something went wrong."}`;
+                    if (!urls.length) {
+                        alert("Please enter at least one URL.");
+                        status.textContent = "";
+                        return;
                     }
-                } catch (err) {
-                    console.error(err);
-                    status.textContent = "❌ Failed to connect to backend.";
-                }
-            });
 
-            document.getElementById("downloadBtn").addEventListener("click", () => {
-                if (!latestResults.length) return alert("No results to download.");
+                    try {
+                        const res = await fetch("/scrape-amazon", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ urls }),
+                        });
 
-                const headers = Object.keys(latestResults[0]);
-                const rows = latestResults.map((obj) =>
-                    headers.map((h) => JSON.stringify(obj[h] ?? "")).join(",")
-                );
-                const csvContent = [headers.join(","), ...rows].join("\n");
-                const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-                const link = document.createElement("a");
-                link.href = URL.createObjectURL(blob);
-                link.download = "amazon_results.csv";
-                link.click();
-            });
+                        const data = await res.json();
+
+                        if (data.status === "success") {
+                            const r = data.data;
+                            latestResults = r.results || [];
+                            status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
+                            renderResults(latestResults);
+
+                            if (latestResults.length > 0) {
+                                downloadBtn.classList.remove("hidden");
+                            }
+                        } else {
+                            status.innerHTML = `❌ Error: ${
+                                data.message || "Something went wrong."
+                            }`;
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        status.textContent = "❌ Failed to connect to backend.";
+                    }
+                });
+
+            document
+                .getElementById("downloadBtn")
+                .addEventListener("click", () => {
+                    if (!latestResults.length)
+                        return alert("No results to download.");
+
+                    const headers = Object.keys(latestResults[0]);
+                    const rows = latestResults.map((obj) =>
+                        headers
+                            .map((h) => JSON.stringify(obj[h] ?? ""))
+                            .join(",")
+                    );
+                    const csvContent = [headers.join(","), ...rows].join("\n");
+                    const blob = new Blob([csvContent], {
+                        type: "text/csv;charset=utf-8;",
+                    });
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(blob);
+                    link.download = "amazon_results.csv";
+                    link.click();
+                });
 
             function renderResults(results) {
                 const resultsDiv = document.getElementById("results");
                 if (!results || !results.length) {
-                    resultsDiv.innerHTML = "<p class='text-gray-500'>No results found.</p>";
+                    resultsDiv.innerHTML =
+                        "<p class='text-gray-500'>No results found.</p>";
                     return;
                 }
 
                 const table = document.createElement("table");
-                table.className = "w-full border border-gray-300 text-left text-sm";
+                table.className =
+                    "w-full border border-gray-300 text-left text-sm";
                 table.innerHTML = `
                     <thead class="bg-gray-100">
                         <tr>
@@ -136,14 +154,28 @@
                             .map(
                                 (r) => `
                                 <tr class="hover:bg-gray-50">
-                                    <td class="border px-3 py-2">${r.itemNumber || "-"}</td>
-                                    <td class="border px-3 py-2">${r.title || "-"}</td>
-                                    <td class="border px-3 py-2">${r.actualPrice ?? "-"}</td>
-                                    <td class="border px-3 py-2">${r.discountedPrice ?? "-"}</td>
-                                    <td class="border px-3 py-2">${r.inStock ? "✅ Yes" : "❌ No"}</td>
-                                    <td class="border px-3 py-2">${r.locationZipCode ?? "-"}</td>
+                                    <td class="border px-3 py-2">${
+                                        r.itemNumber || "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.title || "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.actualPrice ?? "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.discountedPrice ?? "-"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.inStock ? "✅ Yes" : "❌ No"
+                                    }</td>
+                                    <td class="border px-3 py-2">${
+                                        r.locationZipCode ?? "-"
+                                    }</td>
                                     <td class="border px-3 py-2">
-                                        <a href="${r.url}" target="_blank" class="text-blue-600 hover:underline">Open</a>
+                                        <a href="${
+                                            r.url
+                                        }" target="_blank" class="text-blue-600 hover:underline">Open</a>
                                     </td>
                                 </tr>`
                             )
@@ -155,3 +187,92 @@
         </script>
     </body>
 </html>
+
+<!-- <div class="a-popover-wrapper">
+    <header class="a-popover-header">
+        <h4 class="a-popover-header-content" id="a-popover-header-2">
+            You're now shopping for delivery to:
+        </h4>
+        <button
+            data-action="a-popover-close"
+            class="a-button-close a-declarative"
+            aria-label="Close"
+        >
+            <i class="a-icon a-icon-close"></i></button
+        ><span
+            id="a-popover-label-2"
+            class="a-popover-a11y-offscreen"
+            aria-hidden="true"
+            >Choose your location</span
+        >
+    </header>
+    <div
+        class="a-popover-inner"
+        id="a-popover-content-2"
+        style="height: auto; overflow-y: auto"
+    >
+        <div class="" id="GLUXHiddenSuccessDialog">
+            <span class="a-list-item"
+                ><span class="GLUX_Block a-size-medium GLUX_Success_Row a-row">
+                    <div class="GLUX_Pin_Image"></div>
+                    <div class="a-text-left a-column a-span11 a-span-last">
+                        <div id="GLUXHiddenSuccessSelectedAddressPlaceholder">
+                            75007
+                        </div>
+                    </div>
+                </span></span
+            >
+            <div
+                class="a-size-small a-text a-color-tertiary a-spacing-top-base GLUX_Hidden"
+                id="GLUXHiddenSuccessSubText"
+            >
+                Delivery options may vary for different locations
+            </div>
+            <div
+                class="a-size-small,a-text,a-color-tertiary,a-spacing-top-base"
+                id="GLUXHiddenSuccessSubTextAisEgress"
+            >
+                We will use your selected location to show all products
+                available for the <strong>United States</strong>. Additional
+                language and currency settings may not be available.
+            </div>
+            <div
+                class="a-size-small a-text a-color-tertiary GLUX_Hidden"
+                id="GLUXHiddenSuccessFooter"
+            >
+                <span class="a-button a-column a-button-primary a-button-span4"
+                    ><span
+                        class="a-button-inner a-declarative"
+                        data-action="GLUXConfirmAction"
+                        ><input
+                            class="a-button-input"
+                            id="GLUXConfirmClose"
+                            aria-labelledby="GLUXConfirmClose-announce"
+                            type="submit"
+                        /><span
+                            class="a-button-text"
+                            id="GLUXConfirmClose-announce"
+                            >Continue</span
+                        ></span
+                    ></span
+                >
+            </div>
+        </div>
+    </div>
+    <div class="a-popover-footer">
+        <span class="a-button a-column a-button-primary a-button-span4"
+            ><span
+                class="a-button-inner a-declarative"
+                data-action="GLUXConfirmAction"
+                ><input
+                    class="a-button-input"
+                    id="GLUXConfirmClose"
+                    aria-labelledby="GLUXConfirmClose-announce"
+                    type="submit"
+                /><span class="a-button-text" id="GLUXConfirmClose-announce"
+                    >Continue</span
+                ></span
+            ></span
+        >
+    </div>
+</div> -->
