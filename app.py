@@ -86,33 +86,28 @@ def scrape_ebay():
 @app.route("/scrape-amazon", methods=["POST"])
 def scrape_amazon():
     """
-    Accepts a CSV file (containing amazon item URLs).
-    Scrapes them one by one and returns the results as JSON.
-    Processes the file in memory (not saved to disk).
+    Accepts JSON body with a list of URLs.
+    Example: { "urls": ["https://amazon.com/dp/B00FR6XR9S", ...] }
+    Scrapes them asynchronously and returns the results as JSON.
     """
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files["file"]
-
-    if file.filename == "":
-        return jsonify({"error": "No selected file"}), 400
-
     try:
-        # Read CSV content in memory
-        content = file.read().decode("utf-8")
-        csv_data = io.StringIO(content)
-        reader = csv.reader(csv_data)
-        urls = [row[0].strip() for row in reader if row]  # assumes one URL per line
+        data = request.get_json()
+        if not data or "urls" not in data:
+            return jsonify({"status": "error", "message": "No URLs provided"}), 400
 
-        # Run the async scraper directly with URLs
-        data = asyncio.run(scrape_amazon_from_csv(urls))
+        urls = [u.strip() for u in data["urls"] if u.strip()]
+        if not urls:
+            return jsonify({"status": "error", "message": "URL list is empty"}), 400
 
-        return jsonify({"status": "success", "data": data})
+        # Run the async scraper directly
+        results = asyncio.run(scrape_amazon_from_csv(urls))
+
+        return jsonify({"status": "success", "data": results})
 
     except Exception as e:
         print("❌ Error:", e)
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 if __name__ == "__main__":
