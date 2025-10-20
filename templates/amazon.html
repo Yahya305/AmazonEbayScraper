@@ -5,39 +5,39 @@
         <title>Amazon Scraper</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
-    <body class="bg-yellow-50 flex justify-center items-center min-h-screen">
-        <div
-            class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-lg text-center"
-        >
-            <h1 class="text-2xl font-bold mb-4 text-yellow-700">
+
+    <body class="bg-gradient-to-br from-yellow-50 to-yellow-100 flex justify-center items-center min-h-screen">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-3xl text-center">
+            <h1 class="text-3xl font-bold mb-4 text-yellow-700">
                 🛍️ Amazon Scraper
             </h1>
-            <p class="text-gray-600 mb-4">
-                Upload your CSV file containing Amazon product URLs:
+            <p class="text-gray-600 mb-6">
+                Upload a CSV file with Amazon product URLs and scrape details instantly.
             </p>
 
             <input
                 type="file"
                 id="csvFile"
                 accept=".csv"
-                class="border border-gray-300 rounded-lg p-2 w-full mb-4"
+                class="border border-gray-300 rounded-lg p-2 w-full mb-4 focus:ring-2 focus:ring-yellow-500 outline-none"
             />
 
             <div class="flex gap-2 justify-center">
                 <button
                     id="scrapeBtn"
-                    class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg"
+                    class="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg transition"
                 >
-                    Start Scraping
+                    🚀 Start Scraping
                 </button>
                 <a
                     href="/"
-                    class="inline-flex items-center px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
+                    class="inline-flex items-center px-6 py-2 border rounded-lg text-gray-600 hover:bg-gray-50 transition"
                     >← Home</a
                 >
             </div>
 
-            <div id="status" class="mt-4 text-gray-700"></div>
+            <div id="status" class="mt-5 text-gray-700 text-sm"></div>
+
             <div id="results" class="mt-6 overflow-x-auto"></div>
         </div>
 
@@ -67,14 +67,15 @@
                         });
                         const data = await res.json();
 
-                        if (data.status === "success") {
-                            const r = data.results;
-                            status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
+                        if (data.status === "success" && data.data) {
+                            const r = data.data;
+                            status.innerHTML = `
+                                ✅ <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> URLs scraped successfully.
+                                ${r.failedScrapes > 0 ? `<br>⚠️ Failed URLs: ${r.failedScrapes}` : ""}
+                            `;
                             renderResults(r.results);
                         } else {
-                            status.innerHTML = `❌ Error: ${
-                                data.message || "Something went wrong."
-                            }`;
+                            status.innerHTML = `❌ Error: ${data.message || "Something went wrong."}`;
                         }
                     } catch (err) {
                         console.error(err);
@@ -90,39 +91,45 @@
                 }
 
                 const table = document.createElement("table");
-                table.className = "w-full border border-gray-300 text-left";
+                table.className = "w-full border border-gray-300 text-left text-sm rounded-lg overflow-hidden";
                 table.innerHTML = `
-        <thead class="bg-gray-100">
-          <tr>
-            <th class="border px-3 py-2">ASIN / ID</th>
-            <th class="border px-3 py-2">Title</th>
-            <th class="border px-3 py-2">Price</th>
-            <th class="border px-3 py-2">Availability</th>
-            <th class="border px-3 py-2">Link</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${results
-              .map(
-                  (r) => `
-            <tr class="hover:bg-gray-50">
-              <td class="border px-3 py-2">${r.itemNumber || "-"}</td>
-              <td class="border px-3 py-2">${r.title || "-"}</td>
-              <td class="border px-3 py-2">${r.price ?? "-"}</td>
-              <td class="border px-3 py-2">${
-                  r.stockCount ?? r.availability ?? "-"
-              }</td>
-              <td class="border px-3 py-2">
-                <a href="${
-                    r.url
-                }" target="_blank" class="text-blue-500 hover:underline">Open</a>
-              </td>
-            </tr>
-          `
-              )
-              .join("")}
-        </tbody>
-      `;
+                    <thead class="bg-yellow-100 text-yellow-800">
+                        <tr>
+                            <th class="border px-3 py-2">ASIN / ID</th>
+                            <th class="border px-3 py-2">Title</th>
+                            <th class="border px-3 py-2">Actual Price</th>
+                            <th class="border px-3 py-2">Discounted Price</th>
+                            <th class="border px-3 py-2">In Stock</th>
+                            <th class="border px-3 py-2">Stock Count</th>
+                            <th class="border px-3 py-2">Link</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${results
+                            .map(
+                                (r) => `
+                            <tr class="hover:bg-yellow-50 transition">
+                                <td class="border px-3 py-2 font-mono">${r.itemNumber || "-"}</td>
+                                <td class="border px-3 py-2">${r.title || "-"}</td>
+                                <td class="border px-3 py-2">$${r.actualPrice ?? "-"}</td>
+                                <td class="border px-3 py-2">$${r.discountedPrice ?? "-"}</td>
+                                <td class="border px-3 py-2">
+                                    ${
+                                        r.inStock
+                                            ? `<span class="text-green-600 font-semibold">✅ Yes</span>`
+                                            : `<span class="text-red-600 font-semibold">❌ No</span>`
+                                    }
+                                </td>
+                                <td class="border px-3 py-2">${r.numberInStock ?? "-"}</td>
+                                <td class="border px-3 py-2">
+                                    <a href="${r.url}" target="_blank" class="text-blue-500 hover:underline">Open</a>
+                                </td>
+                            </tr>
+                        `
+                            )
+                            .join("")}
+                    </tbody>
+                `;
                 resultsDiv.appendChild(table);
             }
         </script>
