@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import asyncio
 import nest_asyncio
 import io
+import sys
 import os
 import csv
 from scraper import scrape_ebay_from_csv
@@ -10,8 +11,17 @@ from utils.config_manager import get_chromium_path
 # Allow nested event loops (Flask + asyncio compatibility)
 nest_asyncio.apply()
 
-app = Flask(__name__)
+# Determine base path for templates and static files
+if getattr(sys, 'frozen', False):  # Running as compiled EXE
+    base_path = sys._MEIPASS
+else:
+    base_path = os.path.abspath(".")
 
+app = Flask(
+    __name__,
+    template_folder=os.path.join(base_path, "templates"),
+    static_folder=os.path.join(base_path, "static")
+)
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -20,7 +30,24 @@ print("Chromium path is:", chromium_path)
 
 
 @app.route("/")
-def home():
+def index():
+    """Serve home page with eBay and Amazon buttons."""
+    return render_template("index.html")
+
+
+@app.route("/ebay")
+def ebay_page():
+    """Serve the eBay-specific page."""
+    return render_template("ebay.html")
+
+
+@app.route("/amazon")
+def amazon_page():
+    """Serve the Amazon-specific page."""
+    return render_template("amazon.html")
+
+@app.route("/health")
+def health_check():
     return jsonify({"message": "✅ eBay Scraper API is running!"})
 
 
@@ -57,4 +84,12 @@ def scrape_ebay():
 
 
 if __name__ == "__main__":
+    import webbrowser
+    from threading import Timer
+
+    # Define the URL you want to open
+    url = "http://127.0.0.1:5000"
+
+    # Open browser shortly after server starts
+    Timer(1.5, lambda: webbrowser.open(url)).start()
     app.run(debug=True)

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>eBay Scraper</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-gray-100 flex justify-center items-center min-h-screen">
+        <div
+            class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-lg text-center"
+        >
+            <h1 class="text-2xl font-bold mb-4 text-blue-600">
+                🛒 eBay Scraper
+            </h1>
+            <p class="text-gray-600 mb-4">
+                Upload your CSV file containing eBay URLs:
+            </p>
+
+            <input
+                type="file"
+                id="csvFile"
+                accept=".csv"
+                class="border border-gray-300 rounded-lg p-2 w-full mb-4"
+            />
+
+            <div class="flex gap-2 justify-center">
+                <button
+                    id="scrapeBtn"
+                    class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                >
+                    Start Scraping
+                </button>
+                <a
+                    href="/"
+                    class="inline-flex items-center px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
+                    >← Home</a
+                >
+            </div>
+
+            <div id="status" class="mt-4 text-gray-700"></div>
+            <div id="results" class="mt-6 overflow-x-auto"></div>
+        </div>
+
+        <script>
+            document
+                .getElementById("scrapeBtn")
+                .addEventListener("click", async () => {
+                    const fileInput = document.getElementById("csvFile");
+                    const status = document.getElementById("status");
+                    const resultsDiv = document.getElementById("results");
+                    resultsDiv.innerHTML = "";
+                    status.textContent = "⏳ Scraping in progress...";
+
+                    if (!fileInput.files.length) {
+                        alert("Please select a CSV file first.");
+                        status.textContent = "";
+                        return;
+                    }
+
+                    const formData = new FormData();
+                    formData.append("file", fileInput.files[0]);
+
+                    try {
+                        const res = await fetch("/scrape-ebay", {
+                            method: "POST",
+                            body: formData,
+                        });
+                        const data = await res.json();
+
+                        if (data.status === "success") {
+                            const r = data.results;
+                            status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
+                            renderResults(r.results);
+                        } else {
+                            status.innerHTML = `❌ Error: ${
+                                data.message || "Something went wrong."
+                            }`;
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        status.textContent = "❌ Failed to connect to backend.";
+                    }
+                });
+
+            function renderResults(results) {
+                const resultsDiv = document.getElementById("results");
+                if (!results || !results.length) {
+                    resultsDiv.innerHTML = "<p>No results found.</p>";
+                    return;
+                }
+
+                const table = document.createElement("table");
+                table.className = "w-full border border-gray-300 text-left";
+                table.innerHTML = `
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="border px-3 py-2">Item #</th>
+            <th class="border px-3 py-2">Title</th>
+            <th class="border px-3 py-2">Price</th>
+            <th class="border px-3 py-2">Stock</th>
+            <th class="border px-3 py-2">Link</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${results
+              .map(
+                  (r) => `
+            <tr class="hover:bg-gray-50">
+              <td class="border px-3 py-2">${r.itemNumber || "-"}</td>
+              <td class="border px-3 py-2">${r.title || "-"}</td>
+              <td class="border px-3 py-2">${r.price ?? "-"}</td>
+              <td class="border px-3 py-2">${r.stockCount ?? "-"}</td>
+              <td class="border px-3 py-2">
+                <a href="${
+                    r.url
+                }" target="_blank" class="text-blue-500 hover:underline">Open</a>
+              </td>
+            </tr>
+          `
+              )
+              .join("")}
+        </tbody>
+      `;
+                resultsDiv.appendChild(table);
+            }
+        </script>
+    </body>
+</html>
