@@ -54,33 +54,27 @@ def health_check():
 @app.route("/scrape-ebay", methods=["POST"])
 def scrape_ebay():
     """
-    Accepts a CSV file (containing eBay item URLs).
+    Accepts a JSON body with a 'urls' field containing a list of eBay URLs.
     Scrapes them one by one and returns the results as JSON.
-    Processes the file in memory (not saved to disk).
     """
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files["file"]
-
-    if file.filename == "":
-        return jsonify({"error": "No selected file"}), 400
-
     try:
-        # Read CSV content in memory
-        content = file.read().decode("utf-8")
-        csv_data = io.StringIO(content)
-        reader = csv.reader(csv_data)
-        urls = [row[0].strip() for row in reader if row]  # assumes one URL per line
+        data = request.get_json()
+        if not data or "urls" not in data:
+            return jsonify({"status": "error", "message": "No URLs provided"}), 400
+
+        urls = [u.strip() for u in data["urls"] if u.strip()]
+        if not urls:
+            return jsonify({"status": "error", "message": "URL list is empty"}), 400
 
         # Run the async scraper directly with URLs
-        data = asyncio.run(scrape_ebay_from_csv(urls))
+        results = asyncio.run(scrape_ebay_from_csv(urls))
 
-        return jsonify({"status": "success", "results": data})
+        return jsonify({"status": "success", "results": results})
 
     except Exception as e:
         print("❌ Error:", e)
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 @app.route("/scrape-amazon", methods=["POST"])
