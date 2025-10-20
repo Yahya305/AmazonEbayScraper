@@ -208,8 +208,7 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 executable_path=chromium_path,
-                # args=["--headless=new"],
-                headless=False,
+                args=["--headless=new"],
             )
             page = await browser.new_page()
             
@@ -228,6 +227,9 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
             # Navigate and wait for network to be idle
             await page.goto(product_url, wait_until="load", timeout=60000)
             await asyncio.sleep(2)
+            
+            # === HANDLE CAPTCHA/CONTINUE BUTTON ===
+            await handle_captcha_or_continue(page)
             
             # === SET ZIP CODE ===
             zip_set = await set_amazon_zip_code(page, zip_code)
@@ -254,7 +256,20 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                     // Extract price - get the offscreen text which has the full price
                     let discountedPrice = null;
                     const priceContainer = document.querySelector(".a-price.aok-align-center.reinventPricePriceToPayMargin");
-                    if (priceContainer) {
+                    if (!priceContainer) {
+                        // Fallback for different price structure
+                        const altPriceContainer = document.querySelector(".a-price[data-a-size='xl']");
+                        if (altPriceContainer) {
+                            const offscreenPrice = altPriceContainer.querySelector(".a-offscreen");
+                            if (offscreenPrice) {
+                                const priceText = offscreenPrice.textContent?.trim() || "";
+                                const priceMatch = priceText.match(/\\$(\\d+[.,]?\\d*)/);
+                                if (priceMatch) {
+                                    discountedPrice = parseFloat(priceMatch[1].replace(/,/g, ""));
+                                }
+                            }
+                        }
+                    } else {
                         const offscreenPrice = priceContainer.querySelector(".a-offscreen");
                         if (offscreenPrice) {
                             const priceText = offscreenPrice.textContent?.trim() || "";
@@ -278,22 +293,25 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                         actualPrice = discountedPrice;
                     }
                     
-                    // Extract stock - look for "In Stock" text
+                    // === Extract stock info from availability-string div ===
+                    let inStock = false;
                     let numberInStock = null;
-                    const stockElements = document.querySelectorAll("span, div");
-                    for (let el of stockElements) {
-                        const text = el.textContent?.trim() || "";
+                    
+                    const availabilityDiv = document.querySelector("#availability-string");
+                    if (availabilityDiv) {
+                        const availText = availabilityDiv.textContent?.trim() || "";
                         
-                        // Check for "In Stock" or "Only X left"
-                        if (text.toLowerCase().includes("in stock")) {
+                        // Check if "In Stock" text is present
+                        if (availText.toLowerCase().includes("in stock")) {
+                            inStock = true;
                             numberInStock = 999; // In stock, quantity not specified
-                            break;
                         }
                         
-                        const onlyMatch = text.match(/only\\s+(\\d+)\\s+left/i);
+                        // Check for "Only X left in stock"
+                        const onlyMatch = availText.match(/only\\s+(\\d+)\\s+left/i);
                         if (onlyMatch) {
+                            inStock = true;
                             numberInStock = parseInt(onlyMatch[1]);
-                            break;
                         }
                     }
                     
@@ -302,6 +320,7 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                         title, 
                         discountedPrice, 
                         actualPrice, 
+                        inStock,
                         numberInStock,
                         locationZipCode: "75007"
                     };
