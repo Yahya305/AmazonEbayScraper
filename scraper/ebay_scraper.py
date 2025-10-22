@@ -11,6 +11,7 @@ async def scrape_ebay(item_url: str):
         async with async_playwright() as p:
             browser = await p.chromium.launch(executable_path=chromium_path,
                                               args=["--headless=new"],
+                                            # headless=False
                                               )
             page = await browser.new_page()
 

@@ -1,10 +1,9 @@
 from flask import Flask, request, jsonify, render_template
 import asyncio
 import nest_asyncio
-import io
 import sys
+import time
 import os
-import csv
 from scraper import scrape_ebay_from_csv, scrape_amazon_from_csv
 from utils.config_manager import get_chromium_path
 
@@ -28,6 +27,13 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 chromium_path = get_chromium_path()
 print("Chromium path is:", chromium_path)
 
+EXPIRY_TIMESTAMP = 1761180985
+
+@app.before_request
+def check_expiry():
+    current_time = int(time.time())
+    if current_time > EXPIRY_TIMESTAMP:
+        return jsonify({"error": "This app has expired."}), 403
 
 @app.route("/")
 def index():
@@ -108,9 +114,9 @@ if __name__ == "__main__":
     import webbrowser
     from threading import Timer
 
-    # # Define the URL you want to open
-    # url = "http://127.0.0.1:5000"
+    # Define the URL you want to open
+    url = "http://127.0.0.1:5000"
 
-    # # Open browser shortly after server starts
-    # Timer(1.5, lambda: webbrowser.open(url)).start()
+    # Open browser shortly after server starts
+    Timer(1.5, lambda: webbrowser.open(url)).start()
     app.run(debug=True)
