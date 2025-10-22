@@ -1,130 +1,169 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>eBay Scraper</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body class="bg-gray-100 flex justify-center items-center min-h-screen">
-    <div class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-5xl text-center">
-      <h1 class="text-3xl font-bold mb-4 text-blue-600">🛒 eBay Scraper</h1>
-      <p class="text-gray-600 mb-6">
-        Paste your eBay product links below (one link per line):
-      </p>
-
-      <textarea
-        id="urlInput"
-        placeholder="https://www.ebay.com/itm/...."
-        class="w-full h-[350px] border border-gray-300 rounded-lg p-3 text-sm resize-y mb-4 focus:ring-2 focus:ring-blue-400"
-      ></textarea>
-
-      <div class="flex gap-3 justify-center mb-4">
-        <button
-          id="scrapeBtn"
-          class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg shadow"
+    <head>
+        <meta charset="UTF-8" />
+        <title>eBay Scraper</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-gray-100 flex justify-center items-center min-h-screen">
+        <div
+            class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-5xl text-center"
         >
-          🚀 Start Scraping
-        </button>
-        <button
-          id="downloadBtn"
-          class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg shadow hidden"
-        >
-          ⬇️ Download CSV
-        </button>
-        <a
-          href="/"
-          class="inline-flex items-center px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
-          >← Home</a
-        >
-      </div>
+            <h1 class="text-3xl font-bold mb-4 text-blue-600">
+                🛒 eBay Scraper
+            </h1>
+            <p class="text-gray-600 mb-6">
+                Paste your eBay product links below (one link per line):
+            </p>
 
-      <div id="status" class="mt-2 text-gray-700 font-medium"></div>
-      <div id="results" class="mt-6 overflow-x-auto max-h-[400px] overflow-y-auto"></div>
-    </div>
+            <textarea
+                id="urlInput"
+                placeholder="https://www.ebay.com/itm/...."
+                class="w-full h-[350px] border border-gray-300 rounded-lg p-3 text-sm resize-y mb-4 focus:ring-2 focus:ring-blue-400"
+            ></textarea>
 
-    <script>
-      let latestResults = [];
+            <div class="flex gap-3 justify-center mb-4">
+                <button
+                    id="scrapeBtn"
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg shadow"
+                >
+                    🚀 Start Scraping
+                </button>
+                <button
+                    id="downloadBtn"
+                    class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg shadow hidden"
+                >
+                    ⬇️ Download CSV
+                </button>
+                <a
+                    href="/"
+                    class="inline-flex items-center px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
+                    >← Home</a
+                >
+            </div>
 
-      document
-        .getElementById("scrapeBtn")
-        .addEventListener("click", async () => {
-          const textarea = document.getElementById("urlInput");
-          const status = document.getElementById("status");
-          const resultsDiv = document.getElementById("results");
-          const downloadBtn = document.getElementById("downloadBtn");
-          resultsDiv.innerHTML = "";
-          downloadBtn.classList.add("hidden");
-          status.textContent = "⏳ Scraping in progress...";
+            <div id="status" class="mt-2 text-gray-700 font-medium"></div>
+            <div
+                id="results"
+                class="mt-6 overflow-x-auto max-h-[400px] overflow-y-auto"
+            ></div>
+        </div>
 
-          const urls = textarea.value
-            .split("\n")
-            .map((u) => u.trim())
-            .filter((u) => u);
+        <script>
+            let latestResults = [];
 
-          if (!urls.length) {
-            alert("Please enter at least one eBay URL.");
-            status.textContent = "";
-            return;
-          }
+            document
+                .getElementById("scrapeBtn")
+                .addEventListener("click", async () => {
+                    const textarea = document.getElementById("urlInput");
+                    const status = document.getElementById("status");
+                    const resultsDiv = document.getElementById("results");
+                    const downloadBtn = document.getElementById("downloadBtn");
+                    resultsDiv.innerHTML = "";
+                    downloadBtn.classList.add("hidden");
+                    status.textContent = "⏳ Scraping in progress...";
 
-          try {
-            const res = await fetch("/scrape-ebay", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ urls }),
-            });
+                    const urls = textarea.value
+                        .split("\n")
+                        .map((u) => u.trim())
+                        .filter((u) => u);
 
-            const data = await res.json();
+                    if (!urls.length) {
+                        alert("Please enter at least one eBay URL.");
+                        status.textContent = "";
+                        return;
+                    }
 
-            if (data.status === "success") {
-              const r = data.results;
-              latestResults = r.results || [];
-              status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
-              renderResults(latestResults);
+                    try {
+                        const res = await fetch("/scrape-ebay", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ urls }),
+                        });
 
-              if (latestResults.length > 0) {
-                downloadBtn.classList.remove("hidden");
-              }
-            } else {
-              status.innerHTML = `❌ Error: ${data.message || "Something went wrong."}`;
-            }
-          } catch (err) {
-            console.error(err);
-            status.textContent = "❌ Failed to connect to backend.";
-          }
-        });
+                        const data = await res.json();
 
-      document
-        .getElementById("downloadBtn")
-        .addEventListener("click", () => {
-          if (!latestResults.length)
-            return alert("No results to download.");
+                        if (data.status === "success") {
+                            const r = data.results;
+                            latestResults = r.results || [];
+                            status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
+                            renderResults(latestResults);
 
-          const headers = Object.keys(latestResults[0]);
-          const rows = latestResults.map((obj) =>
-            headers.map((h) => JSON.stringify(obj[h] ?? "")).join(",")
-          );
-          const csvContent = [headers.join(","), ...rows].join("\n");
-          const blob = new Blob([csvContent], {
-            type: "text/csv;charset=utf-8;",
-          });
-          const link = document.createElement("a");
-          link.href = URL.createObjectURL(blob);
-          link.download = "ebay_results.csv";
-          link.click();
-        });
+                            if (latestResults.length > 0) {
+                                downloadBtn.classList.remove("hidden");
+                            }
+                        } else {
+                            status.innerHTML = `❌ Error: ${
+                                data.message || "Something went wrong."
+                            }`;
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        status.textContent = "❌ Failed to connect to backend.";
+                    }
+                });
 
-      function renderResults(results) {
-        const resultsDiv = document.getElementById("results");
-        if (!results || !results.length) {
-          resultsDiv.innerHTML = "<p class='text-gray-500'>No results found.</p>";
-          return;
-        }
+            document
+                .getElementById("downloadBtn")
+                .addEventListener("click", () => {
+                    if (!latestResults.length)
+                        return alert("No results to download.");
 
-        const table = document.createElement("table");
-        table.className =
-          "w-full border border-gray-300 text-left text-sm";
-        table.innerHTML = `
+                    // Get all URLs the user entered
+                    const textarea = document.getElementById("urlInput");
+                    const allUrls = textarea.value
+                        .split("\n")
+                        .map((u) => u.trim())
+                        .filter((u) => u);
+
+                    // Get all URLs that were successfully scraped
+                    const successfulUrls = latestResults.map((r) => r.url);
+                    // Failed = input URLs - successful URLs
+                    const failedUrls = allUrls.filter(
+                        (u) => !successfulUrls.includes(u)
+                    );
+
+                    // Build CSV sections
+                    const headers = Object.keys(latestResults[0]);
+                    const rows = latestResults.map((obj) =>
+                        headers
+                            .map((h) => JSON.stringify(obj[h] ?? ""))
+                            .join(",")
+                    );
+
+                    let csvContent = [
+                        "Successful Scrapes",
+                        headers.join(","),
+                        ...rows,
+                    ].join("\n");
+
+                    if (failedUrls.length) {
+                        csvContent +=
+                            "\n\nFailed URLs\nURL\n" + failedUrls.join("\n");
+                    }
+
+                    // Create and download the CSV file
+                    const blob = new Blob([csvContent], {
+                        type: "text/csv;charset=utf-8;",
+                    });
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(blob);
+                    link.download = "ebay_results.csv";
+                    link.click();
+                });
+
+            function renderResults(results) {
+                const resultsDiv = document.getElementById("results");
+                if (!results || !results.length) {
+                    resultsDiv.innerHTML =
+                        "<p class='text-gray-500'>No results found.</p>";
+                    return;
+                }
+
+                const table = document.createElement("table");
+                table.className =
+                    "w-full border border-gray-300 text-left text-sm";
+                table.innerHTML = `
           <thead class="bg-gray-100">
             <tr>
               <th class="border px-3 py-2">Item #</th>
@@ -136,23 +175,25 @@
           </thead>
           <tbody>
             ${results
-              .map(
-                (r) => `
+                .map(
+                    (r) => `
                 <tr class="hover:bg-gray-50">
                   <td class="border px-3 py-2">${r.itemNumber || "-"}</td>
                   <td class="border px-3 py-2">${r.title || "-"}</td>
                   <td class="border px-3 py-2">${r.price ?? "-"}</td>
                   <td class="border px-3 py-2">${r.stockCount ?? "-"}</td>
                   <td class="border px-3 py-2">
-                    <a href="${r.url}" target="_blank" class="text-blue-600 hover:underline">Open</a>
+                    <a href="${
+                        r.url
+                    }" target="_blank" class="text-blue-600 hover:underline">Open</a>
                   </td>
                 </tr>`
-              )
-              .join("")}
+                )
+                .join("")}
           </tbody>
         `;
-        resultsDiv.appendChild(table);
-      }
-    </script>
-  </body>
+                resultsDiv.appendChild(table);
+            }
+        </script>
+    </body>
 </html>

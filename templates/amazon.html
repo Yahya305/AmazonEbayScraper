@@ -86,9 +86,31 @@
 
                         if (data.status === "success") {
                             const r = data.data;
-                            latestResults = r.results || [];
+                            const successfulUrls = r.results.map((x) => x.url);
+                            const failedUrls = r.failedUrls || [];
+
+                            // ✅ Mark status for each URL
+                            const allResults = [
+                                ...r.results.map((x) => ({
+                                    ...x,
+                                    status: "success",
+                                })),
+                                ...failedUrls.map((url) => ({
+                                    url,
+                                    status: "failed",
+                                    title: "-",
+                                    actualPrice: "-",
+                                    discountedPrice: "-",
+                                    inStock: "-",
+                                    itemNumber: "-",
+                                    locationZipCode: "-",
+                                })),
+                            ];
+
+                            latestResults = allResults;
+
                             status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
-                            renderResults(latestResults);
+                            renderResults(r.results);
 
                             if (latestResults.length > 0) {
                                 downloadBtn.classList.remove("hidden");
@@ -104,6 +126,7 @@
                     }
                 });
 
+            // ✅ Updated download logic to include both success and failed
             document
                 .getElementById("downloadBtn")
                 .addEventListener("click", () => {
@@ -187,4 +210,3 @@
         </script>
     </body>
 </html>
-
