@@ -28,13 +28,13 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 chromium_path = get_chromium_path()
 print("Chromium path is:", chromium_path)
 
-EXPIRY_TIMESTAMP = 1761579069
+EXPIRY_TIMESTAMP = 1761579295
 
-# @app.before_request
-# def check_expiry():
-#     current_time = int(time.time())
-#     if current_time > EXPIRY_TIMESTAMP:
-#         return jsonify({"error": "This app has expired."}), 403
+@app.before_request
+def check_expiry():
+    current_time = int(time.time())
+    if current_time > EXPIRY_TIMESTAMP:
+        return jsonify({"error": "This app has expired."}), 403
 
 @app.route("/")
 def index():

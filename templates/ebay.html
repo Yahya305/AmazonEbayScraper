@@ -35,11 +35,6 @@
                 >
                     ⬇️ Download CSV
                 </button>
-                <a
-                    href="/"
-                    class="inline-flex items-center px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
-                    >← Home</a
-                >
             </div>
 
             <div id="status" class="mt-2 text-gray-700 font-medium"></div>
@@ -51,6 +46,8 @@
 
         <script>
             let latestResults = [];
+            let allInputUrls = [];
+            const MAX_ATTEMPTS = 5;
 
             document
                 .getElementById("scrapeBtn")
@@ -76,19 +73,108 @@
                         return;
                     }
 
+                    allInputUrls = urls;
+
                     // Disable button during scraping
                     scrapeBtn.disabled = true;
                     scrapeBtn.classList.add("opacity-50", "cursor-not-allowed");
 
-                    // Create progress bar
-                    status.innerHTML = `
-                <div class="w-full bg-gray-200 rounded-full h-6 mb-2">
-                    <div id="progressBar" class="bg-blue-600 h-6 rounded-full transition-all duration-300 flex items-center justify-center text-white text-xs font-bold" style="width: 0%">
-                        0%
-                    </div>
-                </div>
-                <p id="progressText" class="text-sm text-gray-600">Starting...</p>
-            `;
+                    // Start retry loop
+                    await scrapeWithRetry(urls);
+
+                    // Re-enable button
+                    scrapeBtn.disabled = false;
+                    scrapeBtn.classList.remove(
+                        "opacity-50",
+                        "cursor-not-allowed"
+                    );
+                });
+
+            async function scrapeWithRetry(initialUrls) {
+                let urlsToScrape = initialUrls;
+                let attempt = 1;
+                let previousSuccessCount = 0;
+                const allSuccessful = [];
+
+                while (urlsToScrape.length > 0 && attempt <= MAX_ATTEMPTS) {
+                    console.log(
+                        `Starting attempt ${attempt} with ${urlsToScrape.length} URLs`
+                    );
+
+                    // Update UI for new attempt
+                    updateAttemptUI(attempt, urlsToScrape.length);
+
+                    // Scrape current batch
+                    const attemptResults = await scrapeUrls(
+                        urlsToScrape,
+                        attempt
+                    );
+
+                    // Collect successful results
+                    allSuccessful.push(...attemptResults.successful);
+                    latestResults = allSuccessful;
+
+                    // Update results display
+                    renderResults(latestResults);
+
+                    // Show download button after first attempt if we have results
+                    if (attempt === 1 && latestResults.length > 0) {
+                        document
+                            .getElementById("downloadBtn")
+                            .classList.remove("hidden");
+                    }
+
+                    // Check stopping conditions
+                    const currentSuccessCount =
+                        attemptResults.successful.length;
+
+                    if (attemptResults.failed.length === 0) {
+                        // All URLs scraped successfully!
+                        showFinalStatus("success", {
+                            totalUrls: allInputUrls.length,
+                            successfulScrapes: allSuccessful.length,
+                            failedScrapes: 0,
+                            attempts: attempt,
+                        });
+                        break;
+                    }
+
+                    if (attempt > 1 && currentSuccessCount === 0) {
+                        // No progress made in this attempt
+                        showFinalStatus("no_progress", {
+                            totalUrls: allInputUrls.length,
+                            successfulScrapes: allSuccessful.length,
+                            failedScrapes: attemptResults.failed.length,
+                            attempts: attempt,
+                        });
+                        break;
+                    }
+
+                    if (attempt >= MAX_ATTEMPTS) {
+                        // Max attempts reached
+                        showFinalStatus("max_attempts", {
+                            totalUrls: allInputUrls.length,
+                            successfulScrapes: allSuccessful.length,
+                            failedScrapes: attemptResults.failed.length,
+                            attempts: attempt,
+                        });
+                        break;
+                    }
+
+                    // Prepare for next attempt with failed URLs
+                    urlsToScrape = attemptResults.failed;
+                    previousSuccessCount = currentSuccessCount;
+                    attempt++;
+
+                    // Small delay before retry
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                }
+            }
+
+            async function scrapeUrls(urls, attempt) {
+                return new Promise(async (resolve) => {
+                    const successful = [];
+                    const failed = [];
 
                     try {
                         const response = await fetch("/scrape-ebay-stream", {
@@ -109,70 +195,116 @@
 
                             for (const line of lines) {
                                 if (line.startsWith("data: ")) {
-                                    const jsonData = JSON.parse(
-                                        line.substring(6)
-                                    );
-                                    handleSSEMessage(jsonData);
+                                    const data = JSON.parse(line.substring(6));
+                                    handleSSEMessage(data, attempt);
+
+                                    // Track results
+                                    if (data.type === "item_success") {
+                                        successful.push(data.data);
+                                    } else if (data.type === "item_failed") {
+                                        failed.push(data.url);
+                                    }
                                 }
                             }
                         }
                     } catch (err) {
-                        console.error(err);
-                        status.innerHTML = "❌ Failed to connect to backend.";
-                    } finally {
-                        scrapeBtn.disabled = false;
-                        scrapeBtn.classList.remove(
-                            "opacity-50",
-                            "cursor-not-allowed"
-                        );
+                        console.error("Error during scraping:", err);
+                        // Treat all as failed if request fails
+                        failed.push(...urls);
                     }
-                });
 
-            function handleSSEMessage(data) {
+                    resolve({ successful, failed });
+                });
+            }
+
+            function updateAttemptUI(attempt, urlCount) {
+                const status = document.getElementById("status");
+                const color = attempt === 1 ? "blue" : "orange";
+
+                status.innerHTML = `
+            <div class="mb-3">
+                <div class="flex justify-between text-sm mb-1">
+                    <span id="attemptInfo" class="font-semibold text-${color}-600">
+                        Attempt ${attempt}${
+                    attempt > 1 ? " (Retry)" : ""
+                } - ${urlCount} URL${urlCount > 1 ? "s" : ""}
+                    </span>
+                    <span id="progressCount" class="text-gray-600">0 / ${urlCount}</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-6 mb-2">
+                    <div id="progressBar" class="bg-${color}-600 h-6 rounded-full transition-all duration-300 flex items-center justify-center text-white text-xs font-bold" style="width: 0%">
+                        0%
+                    </div>
+                </div>
+                <p id="progressText" class="text-sm text-gray-600">Starting attempt ${attempt}...</p>
+            </div>
+        `;
+            }
+
+            function handleSSEMessage(data, attempt) {
                 const progressBar = document.getElementById("progressBar");
                 const progressText = document.getElementById("progressText");
-                const status = document.getElementById("status");
-                const resultsDiv = document.getElementById("results");
-                const downloadBtn = document.getElementById("downloadBtn");
+                const progressCount = document.getElementById("progressCount");
 
                 if (data.type === "progress") {
-                    // Update progress bar
                     const percentage = data.percentage;
                     if (progressBar) {
                         progressBar.style.width = percentage + "%";
                         progressBar.textContent = Math.round(percentage) + "%";
                     }
                     if (progressText) {
-                        progressText.textContent = `Scraping ${data.current} of ${data.total}: ${data.url}`;
+                        progressText.textContent = `[Attempt ${attempt}] Scraping ${data.current} of ${data.total}: ${data.url}`;
                     }
-                } else if (data.type === "item_success") {
-                    // Add successful result to array
-                    latestResults.push(data.data);
-                    renderResults(latestResults);
+                    if (progressCount) {
+                        progressCount.textContent = `${data.current} / ${data.total}`;
+                    }
                 } else if (data.type === "item_failed") {
-                    console.warn(`Failed to scrape: ${data.url}`, data.error);
-                } else if (data.type === "complete") {
-                    // Final results
-                    latestResults = data.results;
-                    status.innerHTML = `
-                <div class="bg-green-100 border border-green-400 rounded-lg p-3 mt-4">
-                    ✅ Scraped <strong>${
-                        data.successfulScrapes
-                    }</strong> of <strong>${
-                        data.totalUrls
-                    }</strong> successfully.
-                    ${
-                        data.failedScrapes > 0
-                            ? `<br>❌ <strong>${data.failedScrapes}</strong> failed.`
-                            : ""
-                    }
+                    console.warn(
+                        `[Attempt ${attempt}] Failed: ${data.url}`,
+                        data.error
+                    );
+                }
+            }
+
+            function showFinalStatus(type, stats) {
+                const status = document.getElementById("status");
+                let html = "";
+
+                if (type === "success") {
+                    html = `
+                <div class="bg-green-100 border border-green-400 rounded-lg p-4 mt-4">
+                    <p class="text-green-800 font-bold text-lg">🎉 All URLs scraped successfully!</p>
+                    <div class="mt-3 space-y-1 text-sm">
+                        <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
+                        <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
+                    </div>
                 </div>
             `;
-
-                    if (latestResults.length > 0) {
-                        downloadBtn.classList.remove("hidden");
-                    }
+                } else if (type === "no_progress") {
+                    html = `
+                <div class="bg-yellow-100 border border-yellow-400 rounded-lg p-4 mt-4">
+                    <p class="text-yellow-800 font-bold text-lg">⚠️ No progress made, stopping retries</p>
+                    <div class="mt-3 space-y-1 text-sm">
+                        <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
+                        <p>❌ Failed: <strong class="text-red-600">${stats.failedScrapes}</strong></p>
+                        <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
+                    </div>
+                </div>
+            `;
+                } else if (type === "max_attempts") {
+                    html = `
+                <div class="bg-orange-100 border border-orange-400 rounded-lg p-4 mt-4">
+                    <p class="text-orange-800 font-bold text-lg">🛑 Maximum attempts (${MAX_ATTEMPTS}) reached</p>
+                    <div class="mt-3 space-y-1 text-sm">
+                        <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
+                        <p>❌ Failed: <strong class="text-red-600">${stats.failedScrapes}</strong></p>
+                        <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
+                    </div>
+                </div>
+            `;
                 }
+
+                status.innerHTML = html;
             }
 
             document
@@ -181,14 +313,8 @@
                     if (!latestResults.length)
                         return alert("No results to download.");
 
-                    const textarea = document.getElementById("urlInput");
-                    const allUrls = textarea.value
-                        .split("\n")
-                        .map((u) => u.trim())
-                        .filter((u) => u);
-
                     const successfulUrls = latestResults.map((r) => r.url);
-                    const failedUrls = allUrls.filter(
+                    const failedUrls = allInputUrls.filter(
                         (u) => !successfulUrls.includes(u)
                     );
 
@@ -231,34 +357,34 @@
                 table.className =
                     "w-full border border-gray-300 text-left text-sm";
                 table.innerHTML = `
-      <thead class="bg-gray-100">
-        <tr>
-          <th class="border px-3 py-2">Item #</th>
-          <th class="border px-3 py-2">Title</th>
-          <th class="border px-3 py-2">Price</th>
-          <th class="border px-3 py-2">Stock</th>
-          <th class="border px-3 py-2">Link</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${results
-            .map(
-                (r) => `
-            <tr class="hover:bg-gray-50">
-              <td class="border px-3 py-2">${r.itemNumber || "-"}</td>
-              <td class="border px-3 py-2">${r.title || "-"}</td>
-              <td class="border px-3 py-2">${r.price ?? "-"}</td>
-              <td class="border px-3 py-2">${r.stockCount ?? "-"}</td>
-              <td class="border px-3 py-2">
-                <a href="${
-                    r.url
-                }" target="_blank" class="text-blue-600 hover:underline">Open</a>
-              </td>
-            </tr>`
-            )
-            .join("")}
-      </tbody>
-    `;
+          <thead class="bg-gray-100">
+            <tr>
+              <th class="border px-3 py-2">Item #</th>
+              <th class="border px-3 py-2">Title</th>
+              <th class="border px-3 py-2">Price</th>
+              <th class="border px-3 py-2">Stock</th>
+              <th class="border px-3 py-2">Link</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${results
+                .map(
+                    (r) => `
+                <tr class="hover:bg-gray-50">
+                  <td class="border px-3 py-2">${r.itemNumber || "-"}</td>
+                  <td class="border px-3 py-2">${r.title || "-"}</td>
+                  <td class="border px-3 py-2">${r.price ?? "-"}</td>
+                  <td class="border px-3 py-2">${r.stockCount ?? "-"}</td>
+                  <td class="border px-3 py-2">
+                    <a href="${
+                        r.url
+                    }" target="_blank" class="text-blue-600 hover:underline">Open</a>
+                  </td>
+                </tr>`
+                )
+                .join("")}
+          </tbody>
+        `;
                 resultsDiv.innerHTML = "";
                 resultsDiv.appendChild(table);
             }

@@ -3,11 +3,14 @@ from typing import List
 from playwright.async_api import async_playwright, Page
 from utils.setup_browser import get_chromium_path
 import re
+import random
 
 # --- Reusable single-URL scraper ---
 async def scrape_ebay(item_url: str):
     chromium_path = get_chromium_path()
     try:
+        # if random.random() < 0.4:
+        #     raise Exception("Simulated random error for testing")
         async with async_playwright() as p:
             browser = await p.chromium.launch(executable_path=chromium_path,
                                               args=["--headless=new"],
