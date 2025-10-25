@@ -1,11 +1,12 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, Response, stream_with_context
 import asyncio
 import nest_asyncio
 import sys
 import time
 import os
-from scraper import scrape_ebay_from_csv, scrape_amazon_from_csv
+from scraper import scrape_ebay_from_list, scrape_amazon_from_csv, scrape_ebay_with_progress
 from utils.config_manager import get_chromium_path
+import json
 
 # Allow nested event loops (Flask + asyncio compatibility)
 nest_asyncio.apply()
@@ -27,13 +28,13 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 chromium_path = get_chromium_path()
 print("Chromium path is:", chromium_path)
 
-EXPIRY_TIMESTAMP = 1761183552
+EXPIRY_TIMESTAMP = 1761579069
 
-@app.before_request
-def check_expiry():
-    current_time = int(time.time())
-    if current_time > EXPIRY_TIMESTAMP:
-        return jsonify({"error": "This app has expired."}), 403
+# @app.before_request
+# def check_expiry():
+#     current_time = int(time.time())
+#     if current_time > EXPIRY_TIMESTAMP:
+#         return jsonify({"error": "This app has expired."}), 403
 
 @app.route("/")
 def index():
@@ -57,6 +58,60 @@ def health_check():
     return jsonify({"message": "✅ eBay Scraper API is running!"})
 
 
+@app.route("/scrape-ebay-stream", methods=["POST"])
+def scrape_ebay_stream():
+    """
+    Accepts a JSON body with a 'urls' field containing a list of eBay URLs.
+    Scrapes them using SSE for real-time progress updates.
+    """
+    try:
+        data = request.get_json()
+        if not data or "urls" not in data:
+            return jsonify({"status": "error", "message": "No URLs provided"}), 400
+        
+        urls = [u.strip() for u in data["urls"] if u.strip()]
+        if not urls:
+            return jsonify({"status": "error", "message": "URL list is empty"}), 400
+        
+        def generate():
+            """Synchronous generator that runs async scraper"""
+            import asyncio
+            
+            # Create new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                # Run the async generator
+                async def stream_updates():
+                    async for update in scrape_ebay_with_progress(urls):
+                        yield update
+                
+                # Process each update synchronously
+                async_gen = stream_updates()
+                
+                while True:
+                    try:
+                        # Get next update from async generator
+                        update = loop.run_until_complete(async_gen.__anext__())
+                        # Format as SSE and yield immediately
+                        yield f"data: {json.dumps(update)}\n\n"
+                    except StopAsyncIteration:
+                        break
+                        
+            finally:
+                loop.close()
+        
+        # Return response with proper headers for SSE
+        response = Response(generate(), mimetype='text/event-stream')
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['X-Accel-Buffering'] = 'no'
+        return response
+        
+    except Exception as e:
+        print("❌ Error:", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
 @app.route("/scrape-ebay", methods=["POST"])
 def scrape_ebay():
     """
@@ -73,7 +128,7 @@ def scrape_ebay():
             return jsonify({"status": "error", "message": "URL list is empty"}), 400
 
         # Run the async scraper directly with URLs
-        results = asyncio.run(scrape_ebay_from_csv(urls))
+        results = asyncio.run(scrape_ebay_from_list(urls))
 
         return jsonify({"status": "success", "results": results})
 

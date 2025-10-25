@@ -59,9 +59,11 @@
                     const status = document.getElementById("status");
                     const resultsDiv = document.getElementById("results");
                     const downloadBtn = document.getElementById("downloadBtn");
+                    const scrapeBtn = document.getElementById("scrapeBtn");
+
                     resultsDiv.innerHTML = "";
                     downloadBtn.classList.add("hidden");
-                    status.textContent = "⏳ Scraping in progress...";
+                    latestResults = [];
 
                     const urls = textarea.value
                         .split("\n")
@@ -74,34 +76,104 @@
                         return;
                     }
 
+                    // Disable button during scraping
+                    scrapeBtn.disabled = true;
+                    scrapeBtn.classList.add("opacity-50", "cursor-not-allowed");
+
+                    // Create progress bar
+                    status.innerHTML = `
+                <div class="w-full bg-gray-200 rounded-full h-6 mb-2">
+                    <div id="progressBar" class="bg-blue-600 h-6 rounded-full transition-all duration-300 flex items-center justify-center text-white text-xs font-bold" style="width: 0%">
+                        0%
+                    </div>
+                </div>
+                <p id="progressText" class="text-sm text-gray-600">Starting...</p>
+            `;
+
                     try {
-                        const res = await fetch("/scrape-ebay", {
+                        const response = await fetch("/scrape-ebay-stream", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ urls }),
                         });
 
-                        const data = await res.json();
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
 
-                        if (data.status === "success") {
-                            const r = data.results;
-                            latestResults = r.results || [];
-                            status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
-                            renderResults(latestResults);
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
 
-                            if (latestResults.length > 0) {
-                                downloadBtn.classList.remove("hidden");
+                            const chunk = decoder.decode(value);
+                            const lines = chunk.split("\n\n");
+
+                            for (const line of lines) {
+                                if (line.startsWith("data: ")) {
+                                    const jsonData = JSON.parse(
+                                        line.substring(6)
+                                    );
+                                    handleSSEMessage(jsonData);
+                                }
                             }
-                        } else {
-                            status.innerHTML = `❌ Error: ${
-                                data.message || "Something went wrong."
-                            }`;
                         }
                     } catch (err) {
                         console.error(err);
-                        status.textContent = "❌ Failed to connect to backend.";
+                        status.innerHTML = "❌ Failed to connect to backend.";
+                    } finally {
+                        scrapeBtn.disabled = false;
+                        scrapeBtn.classList.remove(
+                            "opacity-50",
+                            "cursor-not-allowed"
+                        );
                     }
                 });
+
+            function handleSSEMessage(data) {
+                const progressBar = document.getElementById("progressBar");
+                const progressText = document.getElementById("progressText");
+                const status = document.getElementById("status");
+                const resultsDiv = document.getElementById("results");
+                const downloadBtn = document.getElementById("downloadBtn");
+
+                if (data.type === "progress") {
+                    // Update progress bar
+                    const percentage = data.percentage;
+                    if (progressBar) {
+                        progressBar.style.width = percentage + "%";
+                        progressBar.textContent = Math.round(percentage) + "%";
+                    }
+                    if (progressText) {
+                        progressText.textContent = `Scraping ${data.current} of ${data.total}: ${data.url}`;
+                    }
+                } else if (data.type === "item_success") {
+                    // Add successful result to array
+                    latestResults.push(data.data);
+                    renderResults(latestResults);
+                } else if (data.type === "item_failed") {
+                    console.warn(`Failed to scrape: ${data.url}`, data.error);
+                } else if (data.type === "complete") {
+                    // Final results
+                    latestResults = data.results;
+                    status.innerHTML = `
+                <div class="bg-green-100 border border-green-400 rounded-lg p-3 mt-4">
+                    ✅ Scraped <strong>${
+                        data.successfulScrapes
+                    }</strong> of <strong>${
+                        data.totalUrls
+                    }</strong> successfully.
+                    ${
+                        data.failedScrapes > 0
+                            ? `<br>❌ <strong>${data.failedScrapes}</strong> failed.`
+                            : ""
+                    }
+                </div>
+            `;
+
+                    if (latestResults.length > 0) {
+                        downloadBtn.classList.remove("hidden");
+                    }
+                }
+            }
 
             document
                 .getElementById("downloadBtn")
@@ -109,21 +181,17 @@
                     if (!latestResults.length)
                         return alert("No results to download.");
 
-                    // Get all URLs the user entered
                     const textarea = document.getElementById("urlInput");
                     const allUrls = textarea.value
                         .split("\n")
                         .map((u) => u.trim())
                         .filter((u) => u);
 
-                    // Get all URLs that were successfully scraped
                     const successfulUrls = latestResults.map((r) => r.url);
-                    // Failed = input URLs - successful URLs
                     const failedUrls = allUrls.filter(
                         (u) => !successfulUrls.includes(u)
                     );
 
-                    // Build CSV sections
                     const headers = Object.keys(latestResults[0]);
                     const rows = latestResults.map((obj) =>
                         headers
@@ -142,7 +210,6 @@
                             "\n\nFailed URLs\nURL\n" + failedUrls.join("\n");
                     }
 
-                    // Create and download the CSV file
                     const blob = new Blob([csvContent], {
                         type: "text/csv;charset=utf-8;",
                     });
@@ -164,34 +231,35 @@
                 table.className =
                     "w-full border border-gray-300 text-left text-sm";
                 table.innerHTML = `
-          <thead class="bg-gray-100">
-            <tr>
-              <th class="border px-3 py-2">Item #</th>
-              <th class="border px-3 py-2">Title</th>
-              <th class="border px-3 py-2">Price</th>
-              <th class="border px-3 py-2">Stock</th>
-              <th class="border px-3 py-2">Link</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${results
-                .map(
-                    (r) => `
-                <tr class="hover:bg-gray-50">
-                  <td class="border px-3 py-2">${r.itemNumber || "-"}</td>
-                  <td class="border px-3 py-2">${r.title || "-"}</td>
-                  <td class="border px-3 py-2">${r.price ?? "-"}</td>
-                  <td class="border px-3 py-2">${r.stockCount ?? "-"}</td>
-                  <td class="border px-3 py-2">
-                    <a href="${
-                        r.url
-                    }" target="_blank" class="text-blue-600 hover:underline">Open</a>
-                  </td>
-                </tr>`
-                )
-                .join("")}
-          </tbody>
-        `;
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="border px-3 py-2">Item #</th>
+          <th class="border px-3 py-2">Title</th>
+          <th class="border px-3 py-2">Price</th>
+          <th class="border px-3 py-2">Stock</th>
+          <th class="border px-3 py-2">Link</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${results
+            .map(
+                (r) => `
+            <tr class="hover:bg-gray-50">
+              <td class="border px-3 py-2">${r.itemNumber || "-"}</td>
+              <td class="border px-3 py-2">${r.title || "-"}</td>
+              <td class="border px-3 py-2">${r.price ?? "-"}</td>
+              <td class="border px-3 py-2">${r.stockCount ?? "-"}</td>
+              <td class="border px-3 py-2">
+                <a href="${
+                    r.url
+                }" target="_blank" class="text-blue-600 hover:underline">Open</a>
+              </td>
+            </tr>`
+            )
+            .join("")}
+      </tbody>
+    `;
+                resultsDiv.innerHTML = "";
                 resultsDiv.appendChild(table);
             }
         </script>

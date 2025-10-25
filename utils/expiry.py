@@ -16,6 +16,6 @@ def create_expiry_py(path: Path, hours_from_now: int = 30) -> int:
     return expiry_seconds
 
 p = Path("expiry.py")
-epoch = create_expiry_py(p, hours_from_now=24)
+epoch = create_expiry_py(p, hours_from_now=70)
 print("Created expiry.py with EXPIRY_EPOCH =", epoch)
 print("Human time:", __import__("datetime").datetime.utcfromtimestamp(epoch).isoformat() + "Z")

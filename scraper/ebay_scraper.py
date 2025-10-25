@@ -89,7 +89,7 @@ async def scrape_ebay(item_url: str):
         print(f"❌ Error scraping {item_url}: {e}")
         return {"success": False, "url": item_url, "error": str(e)}
 
-async def scrape_ebay_from_csv(urls: List[str]):
+async def scrape_ebay_from_list(urls: List[str]):
     results = []
     failed_urls = []
 
@@ -111,6 +111,55 @@ async def scrape_ebay_from_csv(urls: List[str]):
         "failedUrls": failed_urls,
     }
 
+async def scrape_ebay_with_progress(urls: List[str]):
+    """
+    Async generator that yields progress updates and results as scraping happens.
+    Yields dict objects with different 'type' fields for progress tracking.
+    """
+    results = []
+    failed_urls = []
+    total = len(urls)
+    
+    for index, url in enumerate(urls, 1):
+        # Yield progress update
+        yield {
+            'type': 'progress',
+            'current': index,
+            'total': total,
+            'url': url,
+            'percentage': round((index / total) * 100, 1)
+        }
+        
+        # Scrape the URL
+        print(f"🔍 Scraping: {url}")
+        result = await scrape_ebay(url)
+        
+        if result.get("success"):
+            results.append(result["data"])
+            # Yield success update
+            yield {
+                'type': 'item_success',
+                'data': result['data']
+            }
+        else:
+            failed_urls.append(result.get("url", url))
+            # Yield failure update
+            yield {
+                'type': 'item_failed',
+                'url': url,
+                'error': result.get('error', 'Unknown error')
+            }
+    
+    # Yield final results
+    yield {
+        'type': 'complete',
+        'results': results,
+        'totalUrls': total,
+        'successfulScrapes': len(results),
+        'failedScrapes': len(failed_urls),
+        'failedUrls': failed_urls
+    }
+    
 async def set_amazon_zip_code(page: Page, zip_code: str = "75007"):
     """Set the delivery zip code on Amazon product page"""
     try:
