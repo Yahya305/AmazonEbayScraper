@@ -28,7 +28,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 chromium_path = get_chromium_path()
 print("Chromium path is:", chromium_path)
 
-EXPIRY_TIMESTAMP = 1761579295
+EXPIRY_TIMESTAMP = 1762206093
 
 @app.before_request
 def check_expiry():
@@ -170,8 +170,8 @@ if __name__ == "__main__":
     from threading import Timer
 
     # Define the URL you want to open
-    url = "http://127.0.0.1:5000"
+    # url = "http://127.0.0.1:5000"
 
-    # Open browser shortly after server starts
-    Timer(1.5, lambda: webbrowser.open(url)).start()
+    # # Open browser shortly after server starts
+    # Timer(1.5, lambda: webbrowser.open(url)).start()
     app.run(debug=True)

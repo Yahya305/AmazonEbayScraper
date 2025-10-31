@@ -9,18 +9,18 @@ import random
 async def scrape_ebay(item_url: str):
     chromium_path = get_chromium_path()
     try:
-        # if random.random() < 0.4:
-        #     raise Exception("Simulated random error for testing")
+        # 🎲 TESTING: Randomly fail 30% of requests
+        if random.random() < 0.3:
+            raise Exception("Simulated random error for testing")
+        
         async with async_playwright() as p:
             browser = await p.chromium.launch(executable_path=chromium_path,
                                               args=["--headless=new"],
                                             # headless=False
                                               )
             page = await browser.new_page()
-
             # Log browser console messages
             page.on("console", lambda msg: print("PAGE LOG:", msg.text))
-
             # Set realistic user-agent
             await page.context.set_extra_http_headers({
                 "User-Agent": (
@@ -29,22 +29,21 @@ async def scrape_ebay(item_url: str):
                     "Chrome/120.0.0.0 Safari/537.36"
                 )
             })
-
             # Navigate and wait for network to be idle
             await page.goto(item_url, wait_until="load", timeout=60000)
             await asyncio.sleep(3)
-
+            
             ebay_data = await page.evaluate(
                 """() => {
                     const urlMatch = window.location.href.match(/\\/itm\\/(\\d+)/);
                     const itemNumber = urlMatch ? urlMatch[1] : null;
-
+                    
                     let titleElement =
                         document.querySelector('h1[data-testid="vi-VR-cvipPrice-title"]') ||
                         document.querySelector("h1") ||
                         document.querySelector('[role="heading"]');
                     const title = titleElement?.textContent?.trim() || null;
-
+                    
                     let price = null;
                     const priceElement =
                         document.querySelector('[data-testid="x-price-primary"]') ||
@@ -57,7 +56,7 @@ async def scrape_ebay(item_url: str):
                             price = parseFloat(priceMatch[0].replace(/,/g, ""));
                         }
                     }
-
+                    
                     let stockCount = null;
                     const stockElements = document.querySelectorAll("span");
                     for (const element of stockElements) {
@@ -70,7 +69,6 @@ async def scrape_ebay(item_url: str):
                             }
                         }
                     }
-
                     if (!stockCount) {
                         const allText = document.body.textContent || "";
                         const stockMatch = allText.match(/only\\s+(\\d+)\\s+left/i);
@@ -78,19 +76,27 @@ async def scrape_ebay(item_url: str):
                             stockCount = parseInt(stockMatch[1]);
                         }
                     }
-
+                    
                     return { title, price, stockCount, itemNumber };
                 }"""
             )
-
+            
             await browser.close()
-
+            
+            # ✅ VALIDATION: Check if critical fields are present
+            if not ebay_data.get("title"):
+                raise Exception(f"Failed to extract title from {item_url}")
+            
+            if ebay_data.get("price") is None:
+                raise Exception(f"Failed to extract price from {item_url}")
+            
             ebay_data["url"] = item_url
             return {"success": True, "data": ebay_data}
-
+            
     except Exception as e:
         print(f"❌ Error scraping {item_url}: {e}")
         return {"success": False, "url": item_url, "error": str(e)}
+    
 
 async def scrape_ebay_from_list(urls: List[str]):
     results = []
@@ -114,28 +120,48 @@ async def scrape_ebay_from_list(urls: List[str]):
         "failedUrls": failed_urls,
     }
 
-async def scrape_ebay_with_progress(urls: List[str]):
+async def scrape_ebay_with_progress(urls: List[str], max_concurrent: int = 10):
     """
     Async generator that yields progress updates and results as scraping happens.
-    Yields dict objects with different 'type' fields for progress tracking.
+    Scrapes URLs in parallel with a maximum concurrency limit.
+    
+    Args:
+        urls: List of URLs to scrape
+        max_concurrent: Maximum number of concurrent scraping tasks (default: 5)
     """
+    import asyncio
+    
     results = []
     failed_urls = []
     total = len(urls)
+    completed = 0
     
-    for index, url in enumerate(urls, 1):
+    # Semaphore to limit concurrent tasks
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def scrape_with_semaphore(url, index):
+        """Scrape a single URL with semaphore control"""
+        async with semaphore:
+            print(f"🔍 Scraping ({index}/{total}): {url}")
+            result = await scrape_ebay(url)
+            return result, url
+    
+    # Create all tasks
+    tasks = [scrape_with_semaphore(url, i+1) for i, url in enumerate(urls)]
+    
+    # Process tasks as they complete
+    for coro in asyncio.as_completed(tasks):
+        result, url = await coro
+        completed += 1
+        
         # Yield progress update
         yield {
             'type': 'progress',
-            'current': index,
+            'current': completed,
             'total': total,
             'url': url,
-            'percentage': round((index / total) * 100, 1)
+            'percentage': round((completed / total) * 100, 1)
         }
-        
-        # Scrape the URL
-        print(f"🔍 Scraping: {url}")
-        result = await scrape_ebay(url)
         
         if result.get("success"):
             results.append(result["data"])
@@ -162,7 +188,9 @@ async def scrape_ebay_with_progress(urls: List[str]):
         'failedScrapes': len(failed_urls),
         'failedUrls': failed_urls
     }
-    
+
+
+
 async def set_amazon_zip_code(page: Page, zip_code: str = "75007"):
     """Set the delivery zip code on Amazon product page"""
     try:
