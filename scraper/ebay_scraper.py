@@ -283,6 +283,77 @@ async def handle_captcha_or_continue(page: Page):
         print(f"⚠️ Error checking for continue button: {e}")
         return False
 
+async def scrape_amazon_with_progress(urls: List[str], max_concurrent: int = 3):
+    """
+    Async generator that yields progress updates and results as scraping happens.
+    Scrapes Amazon URLs in parallel with a maximum concurrency limit.
+    
+    Args:
+        urls: List of Amazon URLs to scrape
+        zip_code: ZIP code for delivery location (default: "75007")
+        max_concurrent: Maximum number of concurrent scraping tasks (default: 3)
+    """
+    import asyncio
+    
+    results = []
+    failed_urls = []
+    total = len(urls)
+    completed = 0
+    zip_code="75007"
+    
+    # Semaphore to limit concurrent tasks (lower for Amazon to avoid blocks)
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def scrape_with_semaphore(url, index):
+        """Scrape a single Amazon URL with semaphore control"""
+        async with semaphore:
+            print(f"🔍 Scraping Amazon ({index}/{total}): {url}")
+            result = await scrape_amazon(url, zip_code)
+            return result, url
+    
+    # Create all tasks
+    tasks = [scrape_with_semaphore(url, i+1) for i, url in enumerate(urls)]
+    
+    # Process tasks as they complete
+    for coro in asyncio.as_completed(tasks):
+        result, url = await coro
+        completed += 1
+        
+        # Yield progress update
+        yield {
+            'type': 'progress',
+            'current': completed,
+            'total': total,
+            'url': url,
+            'percentage': round((completed / total) * 100, 1)
+        }
+        
+        if result.get("success"):
+            results.append(result["data"])
+            # Yield success update
+            yield {
+                'type': 'item_success',
+                'data': result['data']
+            }
+        else:
+            failed_urls.append(result.get("url", url))
+            # Yield failure update
+            yield {
+                'type': 'item_failed',
+                'url': url,
+                'error': result.get('error', 'Unknown error')
+            }
+    
+    # Yield final results
+    yield {
+        'type': 'complete',
+        'results': results,
+        'totalUrls': total,
+        'successfulScrapes': len(results),
+        'failedScrapes': len(failed_urls),
+        'failedUrls': failed_urls
+    }
+
 async def scrape_amazon(product_url: str, zip_code: str = "75007"):
     chromium_path = get_chromium_path()
     try:
@@ -316,7 +387,7 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
             zip_set = await set_amazon_zip_code(page, zip_code)
             if not zip_set:
                 await browser.close()
-                return {"success": False, "url": product_url, "error": "Failed to set zip code"}
+                raise Exception("Failed to set zip code")
             
             # === SCRAPE DATA ===
             await asyncio.sleep(2)  # Extra wait for content to load
@@ -409,30 +480,17 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
             )
             
             await browser.close()
+            
+            # ✅ VALIDATION: Check if critical fields are present
+            if not amazon_data.get("title"):
+                raise Exception(f"Failed to extract title from {product_url}")
+            
+            if amazon_data.get("discountedPrice") is None:
+                raise Exception(f"Failed to extract price from {product_url}")
+            
             amazon_data["url"] = product_url
             return {"success": True, "data": amazon_data}
             
     except Exception as e:
         print(f"❌ Error scraping {product_url}: {e}")
         return {"success": False, "url": product_url, "error": str(e)}
-
-async def scrape_amazon_from_csv(urls: List[str], zip_code: str = "75007"):
-    results = []
-    failed_urls = []
-    
-    # Scrape sequentially (safer for Amazon — avoids blocking)
-    for url in urls:
-        print(f"🔍 Scraping: {url}")
-        result = await scrape_amazon(url, zip_code)
-        if result.get("success"):
-            results.append(result["data"])
-        else:
-            failed_urls.append(result.get("url", url))
-    
-    return {
-        "results": results,
-        "totalUrls": len(urls),
-        "successfulScrapes": len(results),
-        "failedScrapes": len(failed_urls),
-        "failedUrls": failed_urls,
-    }

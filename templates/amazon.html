@@ -7,139 +7,320 @@
     </head>
     <body class="bg-yellow-50 flex justify-center items-center min-h-screen">
         <div
-            class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-[900px] text-center"
+            class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-5xl text-center"
         >
             <h1
                 class="text-3xl font-bold mb-4 text-yellow-700 flex items-center justify-center gap-2"
             >
                 🛍️ Amazon Scraper
             </h1>
-            <p class="text-gray-600 mb-4">
-                Paste up to <strong>2000 Amazon product URLs</strong> below —
-                one per line:
+            <p class="text-gray-600 mb-6">
+                Paste your Amazon product links below (one link per line):
             </p>
 
             <textarea
                 id="urlInput"
-                placeholder="https://amazon.com/dp/xxxxxxx"
-                class="border border-gray-300 rounded-lg p-3 w-full h-[300px] resize-y focus:ring-2 focus:ring-yellow-500 focus:outline-none text-sm"
+                placeholder="https://amazon.com/dp/B00FR6XR9S"
+                class="w-full h-[350px] border border-gray-300 rounded-lg p-3 text-sm resize-y mb-4 focus:ring-2 focus:ring-yellow-400"
             ></textarea>
 
-            <div class="flex gap-3 justify-center mt-4">
+            <div class="flex gap-3 justify-center mb-4">
                 <button
                     id="scrapeBtn"
-                    class="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg shadow"
+                    class="bg-yellow-600 hover:bg-yellow-700 text-white px-5 py-2 rounded-lg shadow"
                 >
                     🚀 Start Scraping
                 </button>
                 <button
                     id="downloadBtn"
-                    class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg shadow hidden"
+                    class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg shadow hidden"
                 >
                     ⬇️ Download CSV
                 </button>
-                <a
-                    href="/"
-                    class="inline-flex items-center px-6 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
-                    >← Home</a
-                >
+
             </div>
 
-            <div id="status" class="mt-4 text-gray-700 font-medium"></div>
-            <div id="results" class="mt-6 overflow-x-auto"></div>
+            <div id="status" class="mt-2 text-gray-700 font-medium"></div>
+            <div
+                id="results"
+                class="mt-6 overflow-x-auto max-h-[400px] overflow-y-auto"
+            ></div>
         </div>
 
         <script>
             let latestResults = [];
+            let allInputUrls = [];
+            const MAX_ATTEMPTS = 5;
 
             document
                 .getElementById("scrapeBtn")
                 .addEventListener("click", async () => {
-                    const urlInput = document.getElementById("urlInput");
+                    const textarea = document.getElementById("urlInput");
                     const status = document.getElementById("status");
                     const resultsDiv = document.getElementById("results");
                     const downloadBtn = document.getElementById("downloadBtn");
+                    const scrapeBtn = document.getElementById("scrapeBtn");
 
                     resultsDiv.innerHTML = "";
                     downloadBtn.classList.add("hidden");
-                    status.textContent = "⏳ Scraping in progress...";
+                    latestResults = [];
 
-                    const urls = urlInput.value
+                    const urls = textarea.value
                         .split("\n")
                         .map((u) => u.trim())
-                        .filter((u) => u.length > 0);
+                        .filter((u) => u);
 
                     if (!urls.length) {
-                        alert("Please enter at least one URL.");
+                        alert("Please enter at least one Amazon URL.");
                         status.textContent = "";
                         return;
                     }
 
+                    allInputUrls = urls;
+
+                    // Disable button during scraping
+                    scrapeBtn.disabled = true;
+                    scrapeBtn.classList.add("opacity-50", "cursor-not-allowed");
+
+                    // Start retry loop
+                    await scrapeWithRetry(urls);
+
+                    // Re-enable button
+                    scrapeBtn.disabled = false;
+                    scrapeBtn.classList.remove("opacity-50", "cursor-not-allowed");
+                });
+
+            async function scrapeWithRetry(initialUrls) {
+                let urlsToScrape = initialUrls;
+                let attempt = 1;
+                let previousSuccessCount = 0;
+                const allSuccessful = [];
+
+                while (urlsToScrape.length > 0 && attempt <= MAX_ATTEMPTS) {
+                    console.log(`Starting attempt ${attempt} with ${urlsToScrape.length} URLs`);
+
+                    // Update UI for new attempt
+                    updateAttemptUI(attempt, urlsToScrape.length);
+
+                    // Scrape current batch
+                    const attemptResults = await scrapeUrls(urlsToScrape, attempt);
+
+                    // Collect successful results
+                    allSuccessful.push(...attemptResults.successful);
+                    latestResults = allSuccessful;
+
+                    // Update results display
+                    renderResults(latestResults);
+
+                    // Show download button after first attempt if we have results
+                    if (attempt === 1 && latestResults.length > 0) {
+                        document.getElementById("downloadBtn").classList.remove("hidden");
+                    }
+
+                    // Check stopping conditions
+                    const currentSuccessCount = attemptResults.successful.length;
+
+                    if (attemptResults.failed.length === 0) {
+                        // All URLs scraped successfully!
+                        showFinalStatus('success', {
+                            totalUrls: allInputUrls.length,
+                            successfulScrapes: allSuccessful.length,
+                            failedScrapes: 0,
+                            attempts: attempt
+                        });
+                        break;
+                    }
+
+                    if (attempt > 1 && currentSuccessCount === 0) {
+                        // No progress made in this attempt
+                        showFinalStatus('no_progress', {
+                            totalUrls: allInputUrls.length,
+                            successfulScrapes: allSuccessful.length,
+                            failedScrapes: attemptResults.failed.length,
+                            attempts: attempt
+                        });
+                        break;
+                    }
+
+                    if (attempt >= MAX_ATTEMPTS) {
+                        // Max attempts reached
+                        showFinalStatus('max_attempts', {
+                            totalUrls: allInputUrls.length,
+                            successfulScrapes: allSuccessful.length,
+                            failedScrapes: attemptResults.failed.length,
+                            attempts: attempt
+                        });
+                        break;
+                    }
+
+                    // Prepare for next attempt with failed URLs
+                    urlsToScrape = attemptResults.failed;
+                    previousSuccessCount = currentSuccessCount;
+                    attempt++;
+
+                    // Small delay before retry
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+
+            async function scrapeUrls(urls, attempt) {
+                return new Promise(async (resolve) => {
+                    const successful = [];
+                    const failed = [];
+
                     try {
-                        const res = await fetch("/scrape-amazon", {
+                        const response = await fetch("/scrape-amazon-stream", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ urls }),
                         });
 
-                        const data = await res.json();
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
 
-                        if (data.status === "success") {
-                            const r = data.data;
-                            const successfulUrls = r.results.map((x) => x.url);
-                            const failedUrls = r.failedUrls || [];
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
 
-                            // ✅ Mark status for each URL
-                            const allResults = [
-                                ...r.results.map((x) => ({
-                                    ...x,
-                                    status: "success",
-                                })),
-                                ...failedUrls.map((url) => ({
-                                    url,
-                                    status: "failed",
-                                    title: "-",
-                                    actualPrice: "-",
-                                    discountedPrice: "-",
-                                    inStock: "-",
-                                    itemNumber: "-",
-                                    locationZipCode: "-",
-                                })),
-                            ];
+                            const chunk = decoder.decode(value);
+                            const lines = chunk.split("\n\n");
 
-                            latestResults = allResults;
+                            for (const line of lines) {
+                                if (line.startsWith("data: ")) {
+                                    const data = JSON.parse(line.substring(6));
+                                    handleSSEMessage(data, attempt);
 
-                            status.innerHTML = `✅ Scraped <strong>${r.successfulScrapes}</strong> of <strong>${r.totalUrls}</strong> successfully.`;
-                            renderResults(r.results);
-
-                            if (latestResults.length > 0) {
-                                downloadBtn.classList.remove("hidden");
+                                    // Track results
+                                    if (data.type === "item_success") {
+                                        successful.push(data.data);
+                                    } else if (data.type === "item_failed") {
+                                        failed.push(data.url);
+                                    }
+                                }
                             }
-                        } else {
-                            status.innerHTML = `❌ Error: ${
-                                data.message || "Something went wrong."
-                            }`;
                         }
                     } catch (err) {
-                        console.error(err);
-                        status.textContent = "❌ Failed to connect to backend.";
+                        console.error("Error during scraping:", err);
+                        // Treat all as failed if request fails
+                        failed.push(...urls);
                     }
-                });
 
-            // ✅ Updated download logic to include both success and failed
+                    resolve({ successful, failed });
+                });
+            }
+
+            function updateAttemptUI(attempt, urlCount) {
+                const status = document.getElementById("status");
+                const color = attempt === 1 ? 'yellow' : 'orange';
+                
+                status.innerHTML = `
+                    <div class="mb-3">
+                        <div class="flex justify-between text-sm mb-1">
+                            <span id="attemptInfo" class="font-semibold text-${color}-600">
+                                Attempt ${attempt}${attempt > 1 ? ' (Retry)' : ''} - ${urlCount} URL${urlCount > 1 ? 's' : ''}
+                            </span>
+                            <span id="progressCount" class="text-gray-600">0 / ${urlCount}</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-6 mb-2">
+                            <div id="progressBar" class="bg-${color}-600 h-6 rounded-full transition-all duration-300 flex items-center justify-center text-white text-xs font-bold" style="width: 0%">
+                                0%
+                            </div>
+                        </div>
+                        <p id="progressText" class="text-sm text-gray-600">Starting attempt ${attempt}...</p>
+                    </div>
+                `;
+            }
+
+            function handleSSEMessage(data, attempt) {
+                const progressBar = document.getElementById("progressBar");
+                const progressText = document.getElementById("progressText");
+                const progressCount = document.getElementById("progressCount");
+
+                if (data.type === "progress") {
+                    const percentage = data.percentage;
+                    if (progressBar) {
+                        progressBar.style.width = percentage + "%";
+                        progressBar.textContent = Math.round(percentage) + "%";
+                    }
+                    if (progressText) {
+                        progressText.textContent = `[Attempt ${attempt}] Scraping ${data.current} of ${data.total}: ${data.url}`;
+                    }
+                    if (progressCount) {
+                        progressCount.textContent = `${data.current} / ${data.total}`;
+                    }
+                } else if (data.type === "item_failed") {
+                    console.warn(`[Attempt ${attempt}] Failed: ${data.url}`, data.error);
+                }
+            }
+
+            function showFinalStatus(type, stats) {
+                const status = document.getElementById("status");
+                let html = '';
+
+                if (type === 'success') {
+                    html = `
+                        <div class="bg-green-100 border border-green-400 rounded-lg p-4 mt-4">
+                            <p class="text-green-800 font-bold text-lg">🎉 All URLs scraped successfully!</p>
+                            <div class="mt-3 space-y-1 text-sm">
+                                <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
+                                <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
+                            </div>
+                        </div>
+                    `;
+                } else if (type === 'no_progress') {
+                    html = `
+                        <div class="bg-yellow-100 border border-yellow-400 rounded-lg p-4 mt-4">
+                            <p class="text-yellow-800 font-bold text-lg">⚠️ No progress made, stopping retries</p>
+                            <div class="mt-3 space-y-1 text-sm">
+                                <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
+                                <p>❌ Failed: <strong class="text-red-600">${stats.failedScrapes}</strong></p>
+                                <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
+                            </div>
+                        </div>
+                    `;
+                } else if (type === 'max_attempts') {
+                    html = `
+                        <div class="bg-orange-100 border border-orange-400 rounded-lg p-4 mt-4">
+                            <p class="text-orange-800 font-bold text-lg">🛑 Maximum attempts (${MAX_ATTEMPTS}) reached</p>
+                            <div class="mt-3 space-y-1 text-sm">
+                                <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
+                                <p>❌ Failed: <strong class="text-red-600">${stats.failedScrapes}</strong></p>
+                                <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                status.innerHTML = html;
+            }
+
             document
                 .getElementById("downloadBtn")
                 .addEventListener("click", () => {
                     if (!latestResults.length)
                         return alert("No results to download.");
 
+                    const successfulUrls = latestResults.map((r) => r.url);
+                    const failedUrls = allInputUrls.filter(
+                        (u) => !successfulUrls.includes(u)
+                    );
+
                     const headers = Object.keys(latestResults[0]);
                     const rows = latestResults.map((obj) =>
-                        headers
-                            .map((h) => JSON.stringify(obj[h] ?? ""))
-                            .join(",")
+                        headers.map((h) => JSON.stringify(obj[h] ?? "")).join(",")
                     );
-                    const csvContent = [headers.join(","), ...rows].join("\n");
+
+                    let csvContent = [
+                        "Successful Scrapes",
+                        headers.join(","),
+                        ...rows,
+                    ].join("\n");
+
+                    if (failedUrls.length) {
+                        csvContent +=
+                            "\n\nFailed URLs\nURL\n" + failedUrls.join("\n");
+                    }
+
                     const blob = new Blob([csvContent], {
                         type: "text/csv;charset=utf-8;",
                     });
@@ -158,15 +339,14 @@
                 }
 
                 const table = document.createElement("table");
-                table.className =
-                    "w-full border border-gray-300 text-left text-sm";
+                table.className = "w-full border border-gray-300 text-left text-sm";
                 table.innerHTML = `
                     <thead class="bg-gray-100">
                         <tr>
-                            <th class="border px-3 py-2">ASIN / ID</th>
+                            <th class="border px-3 py-2">ASIN</th>
                             <th class="border px-3 py-2">Title</th>
-                            <th class="border px-3 py-2">Actual Price ($)</th>
-                            <th class="border px-3 py-2">Discounted ($)</th>
+                            <th class="border px-3 py-2">Actual Price</th>
+                            <th class="border px-3 py-2">Discounted</th>
                             <th class="border px-3 py-2">In Stock</th>
                             <th class="border px-3 py-2">Zip</th>
                             <th class="border px-3 py-2">Link</th>
@@ -176,35 +356,22 @@
                         ${results
                             .map(
                                 (r) => `
-                                <tr class="hover:bg-gray-50">
-                                    <td class="border px-3 py-2">${
-                                        r.itemNumber || "-"
-                                    }</td>
-                                    <td class="border px-3 py-2">${
-                                        r.title || "-"
-                                    }</td>
-                                    <td class="border px-3 py-2">${
-                                        r.actualPrice ?? "-"
-                                    }</td>
-                                    <td class="border px-3 py-2">${
-                                        r.discountedPrice ?? "-"
-                                    }</td>
-                                    <td class="border px-3 py-2">${
-                                        r.inStock ? "✅ Yes" : "❌ No"
-                                    }</td>
-                                    <td class="border px-3 py-2">${
-                                        r.locationZipCode ?? "-"
-                                    }</td>
-                                    <td class="border px-3 py-2">
-                                        <a href="${
-                                            r.url
-                                        }" target="_blank" class="text-blue-600 hover:underline">Open</a>
-                                    </td>
-                                </tr>`
+                            <tr class="hover:bg-gray-50">
+                                <td class="border px-3 py-2">${r.itemNumber || "-"}</td>
+                                <td class="border px-3 py-2">${r.title || "-"}</td>
+                                <td class="border px-3 py-2">$${r.actualPrice ?? "-"}</td>
+                                <td class="border px-3 py-2">$${r.discountedPrice ?? "-"}</td>
+                                <td class="border px-3 py-2">${r.inStock ? "✅" : "❌"}</td>
+                                <td class="border px-3 py-2">${r.locationZipCode || "-"}</td>
+                                <td class="border px-3 py-2">
+                                    <a href="${r.url}" target="_blank" class="text-blue-600 hover:underline">Open</a>
+                                </td>
+                            </tr>`
                             )
                             .join("")}
                     </tbody>
                 `;
+                resultsDiv.innerHTML = "";
                 resultsDiv.appendChild(table);
             }
         </script>

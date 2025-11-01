@@ -4,7 +4,7 @@ import nest_asyncio
 import sys
 import time
 import os
-from scraper import scrape_ebay_from_list, scrape_amazon_from_csv, scrape_ebay_with_progress
+from scraper import scrape_ebay_from_list, scrape_amazon_with_progress, scrape_ebay_with_progress
 from utils.config_manager import get_chromium_path
 import json
 
@@ -103,6 +103,56 @@ def scrape_ebay_stream():
                 loop.close()
         
         # Return response with proper headers for SSE
+        response = Response(generate(), mimetype='text/event-stream')
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['X-Accel-Buffering'] = 'no'
+        return response
+        
+    except Exception as e:
+        print("❌ Error:", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+@app.route("/scrape-amazon-stream", methods=["POST"])
+def scrape_amazon_stream():
+    """
+    Accepts a JSON body with 'urls' and optional 'zip_code'.
+    Scrapes Amazon URLs using SSE for real-time progress updates.
+    """
+    try:
+        data = request.get_json()
+        if not data or "urls" not in data:
+            return jsonify({"status": "error", "message": "No URLs provided"}), 400
+        
+        urls = [u.strip() for u in data["urls"] if u.strip()]
+        if not urls:
+            return jsonify({"status": "error", "message": "URL list is empty"}), 400
+        
+        max_concurrent = data.get("max_concurrent", 3)  # Lower for Amazon
+        
+        def generate():
+            """Synchronous generator that runs async scraper"""
+            import asyncio
+            
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                async def stream_updates():
+                    async for update in scrape_amazon_with_progress(urls, max_concurrent):
+                        yield update
+                
+                async_gen = stream_updates()
+                
+                while True:
+                    try:
+                        update = loop.run_until_complete(async_gen.__anext__())
+                        yield f"data: {json.dumps(update)}\n\n"
+                    except StopAsyncIteration:
+                        break
+                        
+            finally:
+                loop.close()
+        
         response = Response(generate(), mimetype='text/event-stream')
         response.headers['Cache-Control'] = 'no-cache'
         response.headers['X-Accel-Buffering'] = 'no'
