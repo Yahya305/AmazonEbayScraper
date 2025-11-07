@@ -50,7 +50,7 @@
         <script>
             let latestResults = [];
             let allInputUrls = [];
-            const MAX_ATTEMPTS = 5;
+            // const MAX_ATTEMPTS = 5;
 
             document
                 .getElementById("scrapeBtn")
@@ -96,7 +96,7 @@
                 let previousSuccessCount = 0;
                 const allSuccessful = [];
 
-                while (urlsToScrape.length > 0 && attempt <= MAX_ATTEMPTS) {
+                while (urlsToScrape.length > 0) {
                     console.log(`Starting attempt ${attempt} with ${urlsToScrape.length} URLs`);
 
                     // Update UI for new attempt
@@ -142,16 +142,16 @@
                         break;
                     }
 
-                    if (attempt >= MAX_ATTEMPTS) {
-                        // Max attempts reached
-                        showFinalStatus('max_attempts', {
-                            totalUrls: allInputUrls.length,
-                            successfulScrapes: allSuccessful.length,
-                            failedScrapes: attemptResults.failed.length,
-                            attempts: attempt
-                        });
-                        break;
-                    }
+                    // if (attempt >= MAX_ATTEMPTS) {
+                    //     // Max attempts reached
+                    //     showFinalStatus('max_attempts', {
+                    //         totalUrls: allInputUrls.length,
+                    //         successfulScrapes: allSuccessful.length,
+                    //         failedScrapes: attemptResults.failed.length,
+                    //         attempts: attempt
+                    //     });
+                    //     break;
+                    // }
 
                     // Prepare for next attempt with failed URLs
                     urlsToScrape = attemptResults.failed;
@@ -278,18 +278,19 @@
                             </div>
                         </div>
                     `;
-                } else if (type === 'max_attempts') {
-                    html = `
-                        <div class="bg-orange-100 border border-orange-400 rounded-lg p-4 mt-4">
-                            <p class="text-orange-800 font-bold text-lg">🛑 Maximum attempts (${MAX_ATTEMPTS}) reached</p>
-                            <div class="mt-3 space-y-1 text-sm">
-                                <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
-                                <p>❌ Failed: <strong class="text-red-600">${stats.failedScrapes}</strong></p>
-                                <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
-                            </div>
-                        </div>
-                    `;
-                }
+                } 
+                // else if (type === 'max_attempts') {
+                //     html = `
+                //         <div class="bg-orange-100 border border-orange-400 rounded-lg p-4 mt-4">
+                //             <p class="text-orange-800 font-bold text-lg">🛑 Maximum attempts (${MAX_ATTEMPTS}) reached</p>
+                //             <div class="mt-3 space-y-1 text-sm">
+                //                 <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
+                //                 <p>❌ Failed: <strong class="text-red-600">${stats.failedScrapes}</strong></p>
+                //                 <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
+                //             </div>
+                //         </div>
+                //     `;
+                // }
 
                 status.innerHTML = html;
             }

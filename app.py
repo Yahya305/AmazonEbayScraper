@@ -28,7 +28,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 chromium_path = get_chromium_path()
 print("Chromium path is:", chromium_path)
 
-EXPIRY_TIMESTAMP = 1762206093
+EXPIRY_TIMESTAMP = 1762638620
 
 @app.before_request
 def check_expiry():
@@ -127,7 +127,7 @@ def scrape_amazon_stream():
         if not urls:
             return jsonify({"status": "error", "message": "URL list is empty"}), 400
         
-        max_concurrent = data.get("max_concurrent", 3)  # Lower for Amazon
+        max_concurrent = data.get("max_concurrent", 10)  # Lower for Amazon
         
         def generate():
             """Synchronous generator that runs async scraper"""
@@ -188,30 +188,30 @@ def scrape_ebay():
 
 
 
-@app.route("/scrape-amazon", methods=["POST"])
-def scrape_amazon():
-    """
-    Accepts JSON body with a list of URLs.
-    Example: { "urls": ["https://amazon.com/dp/B00FR6XR9S", ...] }
-    Scrapes them asynchronously and returns the results as JSON.
-    """
-    try:
-        data = request.get_json()
-        if not data or "urls" not in data:
-            return jsonify({"status": "error", "message": "No URLs provided"}), 400
+# @app.route("/scrape-amazon", methods=["POST"])
+# def scrape_amazon():
+#     """
+#     Accepts JSON body with a list of URLs.
+#     Example: { "urls": ["https://amazon.com/dp/B00FR6XR9S", ...] }
+#     Scrapes them asynchronously and returns the results as JSON.
+#     """
+#     try:
+#         data = request.get_json()
+#         if not data or "urls" not in data:
+#             return jsonify({"status": "error", "message": "No URLs provided"}), 400
 
-        urls = [u.strip() for u in data["urls"] if u.strip()]
-        if not urls:
-            return jsonify({"status": "error", "message": "URL list is empty"}), 400
+#         urls = [u.strip() for u in data["urls"] if u.strip()]
+#         if not urls:
+#             return jsonify({"status": "error", "message": "URL list is empty"}), 400
 
-        # Run the async scraper directly
-        results = asyncio.run(scrape_amazon_from_csv(urls))
+#         # Run the async scraper directly
+#         results = asyncio.run(scrape_amazon_from_csv(urls))
 
-        return jsonify({"status": "success", "data": results})
+#         return jsonify({"status": "success", "data": results})
 
-    except Exception as e:
-        print("❌ Error:", e)
-        return jsonify({"status": "error", "message": str(e)}), 500
+#     except Exception as e:
+#         print("❌ Error:", e)
+#         return jsonify({"status": "error", "message": str(e)}), 500
 
 
 
@@ -220,8 +220,8 @@ if __name__ == "__main__":
     from threading import Timer
 
     # Define the URL you want to open
-    # url = "http://127.0.0.1:5000"
+    url = "http://127.0.0.1:5000"
 
-    # # Open browser shortly after server starts
-    # Timer(1.5, lambda: webbrowser.open(url)).start()
+    # Open browser shortly after server starts
+    Timer(1.5, lambda: webbrowser.open(url)).start()
     app.run(debug=True)

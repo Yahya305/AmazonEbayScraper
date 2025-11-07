@@ -283,7 +283,7 @@ async def handle_captcha_or_continue(page: Page):
         print(f"⚠️ Error checking for continue button: {e}")
         return False
 
-async def scrape_amazon_with_progress(urls: List[str], max_concurrent: int = 3):
+async def scrape_amazon_with_progress(urls: List[str], max_concurrent: int = 10):
     """
     Async generator that yields progress updates and results as scraping happens.
     Scrapes Amazon URLs in parallel with a maximum concurrency limit.
@@ -422,8 +422,9 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                             }
                         }
                     } else {
-                        const offscreenPrice = priceContainer.querySelector(".a-offscreen");
-                        if (offscreenPrice) {
+                        const priceContainerExists = !!priceContainer.querySelector(".a-offscreen").innerHTML.trim();
+                        let offscreenPrice = priceContainerExists ? priceContainer.querySelector(".a-offscreen") : document.querySelector(".a-offscreen");
+                        if (offscreenPrice && offscreenPrice.innerHTML.trim()) {
                             const priceText = offscreenPrice.textContent?.trim() || "";
                             const priceMatch = priceText.match(/\\$(\\d+[.,]?\\d*)/);
                             if (priceMatch) {
@@ -449,9 +450,10 @@ async def scrape_amazon(product_url: str, zip_code: str = "75007"):
                     let inStock = false;
                     let numberInStock = null;
                     
-                    const availabilityDiv = document.querySelector("#availability-string");
-                    if (availabilityDiv) {
-                        const availText = availabilityDiv.textContent?.trim() || "";
+                    const stockContainerExists = !!document.querySelector("#availability-string");
+                    let stockContainer = stockContainerExists ? document.querySelector("#availability-string") : document.querySelector("#availability");
+                    if (stockContainer) {
+                        const availText = stockContainer.textContent?.trim() || "";
                         
                         // Check if "In Stock" text is present
                         if (availText.toLowerCase().includes("in stock")) {
