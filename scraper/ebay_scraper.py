@@ -1,5 +1,6 @@
 import asyncio
 from typing import List
+import random
 from playwright.async_api import async_playwright, Page
 from utils.setup_browser import get_chromium_path
 import re
@@ -185,6 +186,105 @@ async def scrape_ebay_with_progress(urls: List[str], max_concurrent: int = 10):
         'failedUrls': failed_urls
     }
 
+import asyncio
+import random
+from typing import List
+
+# async def fake_scrape_ebay_with_progress(urls: List[str], max_concurrent: int = 10):
+#     """
+#     Fake testing version of scrape_ebay_with_progress().
+#     Simulates random successes & failures (~66% success rate).
+#     Yields progress, item_success, item_failed, and final summary.
+#     """
+    
+#     results = []
+#     failed_urls = []
+#     total = len(urls)
+#     completed = 0
+    
+#     semaphore = asyncio.Semaphore(max_concurrent)
+
+#     async def fake_scrape(url, index):
+#         """Simulates scraping delay + random outcome."""
+#         async with semaphore:
+#             # Simulate network + parsing delay
+#             await asyncio.sleep(random.uniform(0.1, 0.5))
+
+#             # Random success (~66%)
+#             success = random.random() < 0.66
+
+#             if success:
+#                 # Generate fake eBay product data
+#                 fake_data = {
+#                     "url": url,
+#                     "itemNumber": f"FAKE-EBAY-{random.randint(100000,999999)}",
+#                     "title": f"Fake eBay Product {random.randint(1, 500)}",
+#                     "price": round(random.uniform(5, 300), 2),
+#                     "shippingCost": round(random.uniform(0, 20), 2),
+#                     "inStock": random.choice([True, False]),
+#                     "location": random.choice(["USA", "UK", "Germany", "China"]),
+#                 }
+#                 return {"success": True, "data": fake_data}, url
+            
+#             else:
+#                 # Fake failure result
+#                 return {
+#                     "success": False,
+#                     "url": url,
+#                     "error": random.choice([
+#                         "Fake network timeout",
+#                         "Fake parsing error",
+#                         "Fake eBay block",
+#                         "Fake captcha",
+#                     ])
+#                 }, url
+
+#     # Create all tasks
+#     tasks = [
+#         fake_scrape(url, i + 1)
+#         for i, url in enumerate(urls)
+#     ]
+
+#     # Process tasks as they complete
+#     for coro in asyncio.as_completed(tasks):
+#         result, url = await coro
+#         completed += 1
+
+#         # Progress event
+#         yield {
+#             "type": "progress",
+#             "current": completed,
+#             "total": total,
+#             "url": url,
+#             "percentage": round((completed / total) * 100, 1),
+#         }
+
+#         if result["success"]:
+#             results.append(result["data"])
+
+#             yield {
+#                 "type": "item_success",
+#                 "data": result["data"],
+#             }
+
+#         else:
+#             failed_urls.append(url)
+
+#             yield {
+#                 "type": "item_failed",
+#                 "url": url,
+#                 "error": result.get("error", "Unknown fake error"),
+#             }
+
+#     # Final summary event
+#     yield {
+#         "type": "complete",
+#         "results": results,
+#         "totalUrls": total,
+#         "successfulScrapes": len(results),
+#         "failedScrapes": len(failed_urls),
+#         "failedUrls": failed_urls,
+#     }
 
 
 async def set_amazon_zip_code(page: Page, zip_code: str = "75007"):
@@ -278,6 +378,94 @@ async def handle_captcha_or_continue(page: Page):
     except Exception as e:
         print(f"⚠️ Error checking for continue button: {e}")
         return False
+
+# async def fake_scrape_amazon_with_progress(urls: List[str], max_concurrent: int = 10):
+#     """
+#     Fake testing version of scrape_amazon_with_progress().
+#     Simulates random successes & failures (~66% success rate).
+#     Yields progress, item_success, item_failed, and final summary.
+#     """
+
+#     total = len(urls)
+#     completed = 0
+#     results = []
+#     failed_urls = []
+
+#     semaphore = asyncio.Semaphore(max_concurrent)
+
+#     async def fake_scrape(url, index):
+#         """Simulate the delay and random outcome of scraping."""
+#         async with semaphore:
+#             # Simulate network + parsing delay
+#             await asyncio.sleep(random.uniform(0.1, 0.5))
+
+#             # Random outcome (≈ 66% success)
+#             success = random.random() < 0.66
+
+#             if success:
+#                 # Create fake product data
+#                 fake_data = {
+#                     "url": url,
+#                     "itemNumber": f"FAKE-ASIN-{random.randint(10000,99999)}",
+#                     "title": f"Fake Product {random.randint(1, 500)}",
+#                     "actualPrice": round(random.uniform(10, 200), 2),
+#                     "discountedPrice": round(random.uniform(5, 150), 2),
+#                     "inStock": random.choice([True, False]),
+#                     "locationZipCode": "75007",
+#                 }
+#                 return {"success": True, "data": fake_data}, url
+            
+#             else:
+#                 # Fake failure
+#                 return {"success": False, "url": url, "error": "Fake scraping error"}, url
+
+#     tasks = [
+#         fake_scrape(url, i + 1)
+#         for i, url in enumerate(urls)
+#     ]
+
+#     # Process tasks as they complete
+#     for coro in asyncio.as_completed(tasks):
+#         result, url = await coro
+#         completed += 1
+
+#         # Yield progress update
+#         yield {
+#             "type": "progress",
+#             "current": completed,
+#             "total": total,
+#             "url": url,
+#             "percentage": round((completed / total) * 100, 1),
+#         }
+
+#         if result["success"]:
+#             results.append(result["data"])
+
+#             # Yield success event
+#             yield {
+#                 "type": "item_success",
+#                 "data": result["data"],
+#             }
+
+#         else:
+#             failed_urls.append(url)
+
+#             # Yield failure event
+#             yield {
+#                 "type": "item_failed",
+#                 "url": url,
+#                 "error": result.get("error", "Unknown fake error"),
+#             }
+
+#     # Final completion message
+#     yield {
+#         "type": "complete",
+#         "results": results,
+#         "totalUrls": total,
+#         "successfulScrapes": len(results),
+#         "failedScrapes": len(failed_urls),
+#         "failedUrls": failed_urls,
+#     }
 
 async def scrape_amazon_with_progress(urls: List[str], max_concurrent: int = 10):
     """

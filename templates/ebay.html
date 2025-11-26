@@ -73,7 +73,9 @@
                         return;
                     }
 
-                    allInputUrls = urls;
+                    if (allInputUrls.length === 0) {
+                        allInputUrls = [...urls];
+                    }
 
                     // Disable button during scraping
                     scrapeBtn.disabled = true;
@@ -174,7 +176,7 @@
             async function scrapeUrls(urls, attempt) {
                 return new Promise(async (resolve) => {
                     const successful = [];
-                    const failed = [];
+                    let failed = [];
 
                     try {
                         const response = await fetch("/scrape-ebay-stream", {
@@ -198,20 +200,32 @@
                                     const data = JSON.parse(line.substring(6));
                                     handleSSEMessage(data, attempt);
 
-                                    // Track results
                                     if (data.type === "item_success") {
                                         successful.push(data.data);
-                                    } else if (data.type === "item_failed") {
-                                        failed.push(data.url);
+                                    } else if (
+                                        data.type === "item_failed" &&
+                                        data.url
+                                    ) {
+                                        failed.push(data.url.trim());
                                     }
                                 }
                             }
                         }
                     } catch (err) {
                         console.error("Error during scraping:", err);
-                        // Treat all as failed if request fails
-                        failed.push(...urls);
+                        // Mark all URLs as failed, but clean them
+                        failed.push(...urls.filter(Boolean));
                     }
+
+                    // Clean failed list
+                    failed = failed
+                        .filter(Boolean)
+                        .filter(
+                            (url) => !successful.some((s) => s.url === url)
+                        ); // remove successes
+
+                    // Deduplicate
+                    failed = [...new Set(failed)];
 
                     resolve({ successful, failed });
                 });
@@ -291,19 +305,19 @@
                     </div>
                 </div>
             `;
-                } 
-            //     else if (type === "max_attempts") {
-            //         html = `
-            //     <div class="bg-orange-100 border border-orange-400 rounded-lg p-4 mt-4">
-            //         <p class="text-orange-800 font-bold text-lg">🛑 Maximum attempts (${MAX_ATTEMPTS}) reached</p>
-            //         <div class="mt-3 space-y-1 text-sm">
-            //             <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
-            //             <p>❌ Failed: <strong class="text-red-600">${stats.failedScrapes}</strong></p>
-            //             <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
-            //         </div>
-            //     </div>
-            // `;
-            //     }
+                }
+                //     else if (type === "max_attempts") {
+                //         html = `
+                //     <div class="bg-orange-100 border border-orange-400 rounded-lg p-4 mt-4">
+                //         <p class="text-orange-800 font-bold text-lg">🛑 Maximum attempts (${MAX_ATTEMPTS}) reached</p>
+                //         <div class="mt-3 space-y-1 text-sm">
+                //             <p>✅ Successfully scraped: <strong class="text-green-600">${stats.successfulScrapes}</strong> of <strong>${stats.totalUrls}</strong></p>
+                //             <p>❌ Failed: <strong class="text-red-600">${stats.failedScrapes}</strong></p>
+                //             <p>🔄 Total attempts: <strong>${stats.attempts}</strong></p>
+                //         </div>
+                //     </div>
+                // `;
+                //     }
 
                 status.innerHTML = html;
             }
